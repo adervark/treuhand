@@ -106,6 +106,7 @@ Treuhand lets an AI's answer move money, so it is built on a short set of rules 
 - Reviewers from different models, so the panel's members do not share one model's blind spots.
 - Resist cloaking, where a worker's server shows the verifier a different page from the one people see: check from more than one network and browser profile, and re-check at payout time.
 - Publish receipt hashes to an append-only log, so an operator cannot quietly re-sign history.
+- A marketplace of open contracts: a payer posts the tests and funds the hold without naming a worker, any worker (or a worker's agent) claims it, and the same verifier, receipt and PayPal payout settle it. This needs real accounts first; today every contract is between the two demo identities.
 - Generate SDKs and a docs portal from the OpenAPI file with APIMatic; real accounts in place of the two demo identities; a review tool for the person who decides escalated disputes; reauthorization for contracts longer than 29 days.
 
 ---
