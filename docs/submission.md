@@ -1,6 +1,6 @@
 # Devpost submission text
 
-Ready to paste into the Devpost form. Every statement is true of the code and the recorded runs as of 12 Nov 2026. Before submitting, the owner fills in `[VIDEO URL]`, the one placeholder left. There is no hosted demo, so judges run it from the repository; if one is deployed, add its URL and the sandbox payer login to Devpost's testing instructions field directly, not to this public file. If the money path in `docs/runbook.md` is run on US sandbox accounts before the deadline, update the sentences marked *(update if the runbook is run)* here and "Status and limitations" in the README.
+Ready to paste into the Devpost form. Every statement is true of the code and the recorded runs as of 12 Nov 2026. Before submitting, the owner fills in `[VIDEO URL]`, the one placeholder left. A hosted demo runs at https://treuhand.adervark.com behind a username and password; those, and the sandbox payer login, go into Devpost's testing instructions field directly, not into this public file. If the money path in `docs/runbook.md` is run on US sandbox accounts before the deadline, update the sentences marked *(update if the runbook is run)* here and "Status and limitations" in the README.
 
 ---
 
@@ -126,9 +126,11 @@ next.js, react, typescript, tailwind-css, sqlite, better-sqlite3, playwright, ch
 
 ## Testing instructions for judges
 
+**Hosted demo:** https://treuhand.adervark.com. It asks for a username and password before anything loads; they are given with these instructions on Devpost, together with the PayPal sandbox payer login used in step 3.
+
 **Code:** https://github.com/adervark/treuhand. "Quick start" in the README runs it locally (Node.js 22.13+, pnpm, a DeepSeek API key, and a PayPal sandbox app on a US business account).
 
-**Acting as each side:** there is no sign-up. Use the "Viewing as Payer / Worker" switch at the top right to act as either side. Every window of one browser acts as the same side, so use the switch in one window, or two browser profiles. To fund a contract, log in to the PayPal window with the sandbox personal account you set as `DEMO_PAYER_EMAIL` (README, "PayPal sandbox accounts"). These are PayPal sandbox accounts; no real money moves.
+**Acting as each side:** there is no sign-up. Use the "Viewing as Payer / Worker" switch at the top right to act as either side. Every window of one browser acts as the same side, so use the switch in one window, or two browser profiles. To fund a contract, log in to the PayPal window with the sandbox payer account: on the hosted demo, the login given with these instructions; on your own copy, the sandbox personal account you set as `DEMO_PAYER_EMAIL` (README, "PayPal sandbox accounts"). These are PayPal sandbox accounts; no real money moves.
 
 **A five-minute script** (also in the README, with expected results):
 
