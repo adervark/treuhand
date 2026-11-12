@@ -10,7 +10,10 @@
  * (refreshed while it runs), so neither can interrupt it.
  * Nothing in the background is lost: every outcome, including a crash, is
  * written to the audit trail. Each finished run also gets a signed receipt
- * (src/lib/verifier/receipt.ts); settlement never reads it.
+ * (src/lib/verifier/receipt.ts); settlement never reads it. On a code bounty,
+ * when the operator opted in, the finished run's verdict is then posted on
+ * the pull request (src/lib/contract/service-pr-comment.ts), also a record
+ * only.
  */
 import { contestWindowSeconds, MissingEnvError } from "@/lib/env";
 import { recordEvent } from "@/lib/db/events";
@@ -25,6 +28,7 @@ import { transition } from "./machine";
 import { acquireClaim, keepClaimAlive, releaseClaim, type Claim } from "./service-claims";
 import { errorMessage, ServiceError, throwIfDenied } from "./service-errors";
 import { recordFailure, settlePass } from "./service-money";
+import { commentOnPullRequest, type FinishedRun } from "./service-pr-comment";
 import { rerunVerificationDenial, submitDenial } from "./service-rules";
 
 function inTx<T>(fn: () => T): T {
@@ -168,13 +172,14 @@ function recordVerificationError(contractId: string, submissionId: string, err: 
 }
 
 /**
- * Runs the verifier, applies its outcome, releases the claim, and (with a 0
- * contest window) settles a pass at once. Never throws: every result,
- * including a crash, is written to the contract's audit trail.
+ * Runs the verifier, applies its outcome, releases the claim, (with a 0
+ * contest window) settles a pass at once, and then comments on the pull
+ * request if that is enabled. Never throws: every result, including a crash,
+ * is written to the contract's audit trail. A crashed run posts nothing.
  */
 async function runVerification(claim: Claim, submissionId: string): Promise<void> {
   const { contractId } = claim;
-  let passed = false;
+  let finished: FinishedRun | null = null;
   const stopRefreshing = keepClaimAlive(claim);
   try {
     const startedAt = new Date();
@@ -197,7 +202,7 @@ async function runVerification(claim: Claim, submissionId: string): Promise<void
       if (outcome === "passed") transition(contractId, "PASSED", { actor: "system", detail: { submission_id: submissionId } });
       if (outcome === "failed") transition(contractId, "FAILED", { actor: "system", detail: { submission_id: submissionId } });
     });
-    passed = outcome === "passed";
+    finished = { contractId, submissionId, outcome, verdicts: result.verdicts, receipt };
   } catch (err) {
     recordVerificationError(contractId, submissionId, err);
   } finally {
@@ -205,13 +210,16 @@ async function runVerification(claim: Claim, submissionId: string): Promise<void
     releaseClaim(claim);
   }
 
-  if (!passed) return;
-  try {
-    if (contestWindowSeconds() === 0) await settlePass(contractId);
-  } catch (err) {
-    // PayPal steps record their own failures (and the sweep retries them);
-    // a denial (e.g. a dispute was opened meanwhile) is not a failure.
-    if (err instanceof ServiceError || err instanceof MissingEnvError) return;
-    recordFailure(contractId, "settle_pass", "settle", err);
+  if (!finished) return;
+  if (finished.outcome === "passed") {
+    try {
+      if (contestWindowSeconds() === 0) await settlePass(contractId);
+    } catch (err) {
+      // PayPal steps record their own failures (and the sweep retries them);
+      // a denial (e.g. a dispute was opened meanwhile) is not a failure.
+      if (!(err instanceof ServiceError || err instanceof MissingEnvError)) recordFailure(contractId, "settle_pass", "settle", err);
+    }
   }
+  // After the claim is released and a pass settled: the comment is a record, never a gate.
+  await commentOnPullRequest(finished);
 }

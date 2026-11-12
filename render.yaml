@@ -54,6 +54,11 @@ services:
       # Optional: raises GitHub API rate limits for code-bounty checks
       - key: GITHUB_TOKEN
         sync: false
+      # Optional, off by default: 1 posts each code-bounty verdict as a comment on
+      # the pull request. Needs GITHUB_TOKEN able to comment: a classic token with
+      # the public_repo scope for public repositories its owner does not own.
+      - key: CLAUSE_GITHUB_PR_COMMENTS
+        sync: false
       # Optional: seconds between a pass and the automatic payout; defaults to 0
       - key: CLAUSE_CONTEST_WINDOW_SECONDS
         sync: false

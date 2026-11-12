@@ -337,6 +337,19 @@ Screenshots in a verdict's `evidence.screenshots` are stored paths such as
 `data/evidence/<submissionId>/<file>.jpg`; load them through
 `GET /api/evidence/<submissionId>/<file>` (below).
 
+**Verdict comment on the pull request** (opt-in: `CLAUSE_GITHUB_PR_COMMENTS=1`
+and `GITHUB_TOKEN`). After a code bounty's run finishes (passed, failed or
+inconclusive; a crashed run posts nothing), its verdict is posted as a comment
+on the submitted pull request, only when the conditions name exactly one
+repository and the submission is a pull request in it. Later runs edit the same
+comment; if it was deleted, a new one is created. The comment never decides
+anything and never delays settlement. Each attempt adds one event:
+`GITHUB_COMMENT_POSTED` (`detail`: `submission_id`, `pull_request` (the PR's
+URL), `comment_id`, `comment_url`, `action` `"created"` or `"updated"`) or
+`GITHUB_COMMENT_FAILED` (`detail`: `submission_id`, `pull_request` when known,
+`reason`, a short sentence such as `"GitHub answered HTTP 502."`; also written
+once per run when the setting is on and `GITHUB_TOKEN` is not set).
+
 ### `POST /api/contracts/[id]/verify` (either party)
 
 Re-runs verification of the latest submission when the last run was

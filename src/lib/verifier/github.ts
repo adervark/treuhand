@@ -14,9 +14,20 @@ import type { CheckContext, CheckResult } from "./index";
 import { clip, describeError, fail, inconclusive, pass } from "./result";
 import { note, step, type StepHandle } from "./trace";
 
-const API = "https://api.github.com";
-const REQUEST_TIMEOUT_MS = 15_000;
+export const GITHUB_API = "https://api.github.com";
+export const GITHUB_TIMEOUT_MS = 15_000;
 const MAX_PAGES = 3;
+
+/** The headers every GitHub REST request sends; the token, when set, as a bearer token. */
+export function githubHeaders(token: string | undefined): Record<string, string> {
+  const headers: Record<string, string> = {
+    accept: "application/vnd.github+json",
+    "x-github-api-version": "2022-11-28",
+    "user-agent": "clause-verifier",
+  };
+  if (token) headers.authorization = `Bearer ${token}`;
+  return headers;
+}
 
 export interface PullRef {
   owner: string;
@@ -81,13 +92,8 @@ class GitHubClient {
   }
 
   private async request<T>(path: string, h: StepHandle): Promise<T | null> {
-    const headers: Record<string, string> = {
-      accept: "application/vnd.github+json",
-      "x-github-api-version": "2022-11-28",
-      "user-agent": "clause-verifier",
-    };
     const token = githubToken();
-    if (token) headers.authorization = `Bearer ${token}`;
+    const headers = githubHeaders(token);
 
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
@@ -95,7 +101,7 @@ class GitHubClient {
       const started = Date.now();
       let res: Response;
       try {
-        res = await fetch(`${API}${path}`, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+        res = await fetch(`${GITHUB_API}${path}`, { headers, signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS) });
       } catch (error) {
         this.calls.push({ request: `GET ${path}`, status: 0, ms: Date.now() - started });
         h.detail({ attempts: attempt });
@@ -165,7 +171,7 @@ function pullExcerpt(pr: PullRequest) {
   };
 }
 
-const sameRepo = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+export const sameRepo = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 type Located = { ok: true; pr: PullRequest; ref: PullRef } | { ok: false; result: CheckResult };
 

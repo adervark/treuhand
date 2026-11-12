@@ -1105,7 +1105,7 @@ components:
         contract_id: { type: string }
         kind:
           type: string
-          description: e.g. CONTRACT_CREATED, STATE_CHANGED, SIGNED_OFF, FUNDS_AUTHORIZED, VERIFICATION_COMPLETED, PAYOUT_SENT.
+          description: e.g. CONTRACT_CREATED, STATE_CHANGED, SIGNED_OFF, FUNDS_AUTHORIZED, VERIFICATION_COMPLETED, PAYOUT_SENT. GITHUB_COMMENT_POSTED and GITHUB_COMMENT_FAILED record the opt-in verdict comment on a code bounty's pull request (docs/api.md, submit).
         detail:
           type: object
           additionalProperties: true

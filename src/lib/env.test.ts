@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clauseModel,
   contestWindowSeconds,
+  githubPrComments,
   githubToken,
   MissingEnvError,
   PAYPAL_API_BASE,
+  publicAppUrl,
   requireAI,
   requirePayPal,
   requirePayPalWebhook,
@@ -19,6 +21,8 @@ const KEYS = [
   "CLAUSE_MODEL",
   "GITHUB_TOKEN",
   "CLAUSE_CONTEST_WINDOW_SECONDS",
+  "CLAUSE_GITHUB_PR_COMMENTS",
+  "RENDER_EXTERNAL_URL",
 ];
 
 beforeEach(() => {
@@ -103,5 +107,29 @@ describe("optional settings", () => {
     expect(() => contestWindowSeconds()).toThrow(/whole number/);
     vi.stubEnv("CLAUSE_CONTEST_WINDOW_SECONDS", "soon");
     expect(() => contestWindowSeconds()).toThrow(/whole number/);
+  });
+
+  it("pull request comments are off unless explicitly turned on", () => {
+    expect(githubPrComments()).toBe(false);
+    for (const on of ["1", "true", "YES", " on "]) {
+      vi.stubEnv("CLAUSE_GITHUB_PR_COMMENTS", on);
+      expect(githubPrComments()).toBe(true);
+    }
+    for (const off of ["0", "false", "no", "off", ""]) {
+      vi.stubEnv("CLAUSE_GITHUB_PR_COMMENTS", off);
+      expect(githubPrComments()).toBe(false);
+    }
+    vi.stubEnv("CLAUSE_GITHUB_PR_COMMENTS", "sometimes");
+    expect(() => githubPrComments()).toThrow(/CLAUSE_GITHUB_PR_COMMENTS must be 1 or 0/);
+  });
+
+  it("the public app URL is only a real https origin, never localhost", () => {
+    expect(publicAppUrl()).toBeUndefined();
+    vi.stubEnv("RENDER_EXTERNAL_URL", "https://treuhand.onrender.com/");
+    expect(publicAppUrl()).toBe("https://treuhand.onrender.com");
+    for (const local of ["http://treuhand.onrender.com", "https://localhost:3000", "https://app.localhost", "https://127.0.0.1", "https://[::1]", "not a url"]) {
+      vi.stubEnv("RENDER_EXTERNAL_URL", local);
+      expect(publicAppUrl()).toBeUndefined();
+    }
   });
 });

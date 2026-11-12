@@ -25,6 +25,13 @@ interface Line {
   tone: Tone;
   refs: [string, string][];
   state?: ContractState;
+  link?: { href: string; label: string };
+}
+
+/** A recorded comment URL, linked only if it is the GitHub comment URL Treuhand builds. */
+function githubCommentUrl(v: unknown): string | null {
+  const url = str(v);
+  return url && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+#issuecomment-\d+$/.test(url) ? url : null;
 }
 
 function describe(e: ClauseEvent, currency: string): Line {
@@ -122,6 +129,17 @@ function describe(e: ClauseEvent, currency: string): Line {
     }
     case "PAYPAL_WEBHOOK":
       return { text: `PayPal notified Treuhand${str(d.event_type) ? `: ${d.event_type}` : ""}`, tone: "money", refs };
+    case "GITHUB_COMMENT_POSTED": {
+      const href = githubCommentUrl(d.comment_url);
+      return {
+        text: `Verdict ${d.action === "updated" ? "updated" : "posted"} on the pull request`,
+        tone: "info",
+        refs,
+        ...(href ? { link: { href, label: "View the comment" } } : {}),
+      };
+    }
+    case "GITHUB_COMMENT_FAILED":
+      return { text: `Verdict not posted on the pull request${str(d.reason) ? `: ${d.reason}` : ""}`, tone: "warn", refs };
     default:
       return { text: humanize(e.kind), tone: "neutral", refs };
   }
@@ -189,7 +207,17 @@ export function AuditTrail({ events, currency }: { events: ClauseEvent[]; curren
                       Now <StateChip state={line.state} />
                     </span>
                   ) : (
-                    <p className="min-w-0 text-[0.8125rem] leading-snug break-words text-ink">{line.text}</p>
+                    <p className="min-w-0 text-[0.8125rem] leading-snug break-words text-ink">
+                      {line.text}
+                      {line.link ? (
+                        <>
+                          {" "}
+                          <a href={line.link.href} target="_blank" rel="noreferrer" className="text-accent hover:underline">
+                            {line.link.label}
+                          </a>
+                        </>
+                      ) : null}
+                    </p>
                   )}
                 </div>
                 {repeats > 1 || line.refs.length > 0 ? (

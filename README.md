@@ -53,6 +53,8 @@ There are eight check kinds. Seven are decided by code and never reach the model
 | `form_submits` | Website | Chromium: fills and submits the form and looks for the agreed success text |
 | `ai_page_judgement` | Website | The reviewer panel |
 
+**The verdict on the pull request** (opt-in, `src/lib/contract/service-pr-comment.ts`). With `CLAUSE_GITHUB_PR_COMMENTS=1` and a `GITHUB_TOKEN` that can comment, each finished run of a code bounty posts its verdict as a comment on the submitted pull request, and later runs of the same contract edit that comment instead of adding another. It is posted only on a pull request in the one repository the contract's conditions name, after the outcome is recorded (and, with no contest window, after a pass is paid), and a post that fails is recorded in the audit trail and changes nothing else. The comment is built from fixed sentences: the outcome, each check with its result, the verifier's note quoted as inert text that cannot mention anyone, reference an issue or link, whether the worker has been paid (only when the contract is `PAID`), the receipt hash and signing key fingerprint, and a link to the contract page when the app has a public `https` address. It never names the parties, their emails, the amount or PayPal ids, but the contract page it links to is open to anyone with the link (there are no logins in this demo).
+
 **The panel's rule** (`src/lib/verifier/ai-judgement.ts`). One agreed criterion, up to four screenshots of the page and its visible text go, at the same time, to three reviewers that share one set of rules and read the page from different angles: a strict literal reader, a reader on the worker's side looking for how the criterion is met, and a sceptic hunting for manipulation and missing evidence. The check passes only if all three say "met" with confidence of at least 0.8, and fails only if all three say "not met" with at least 0.8. A split, any reviewer below 0.8, or any reviewer whose reply fails the schema three times or whose call errors makes the check inconclusive: no money moves until a re-run or a dispute decides it. The verdict's confidence is the panel's agreement, not a model's own estimate, and every reviewer's vote, confidence and reasoning are kept in the evidence. This follows "Trust or Escalate" (arXiv 2407.18370), which found agreement among differently prompted judges a better confidence signal than a model's stated confidence. `CLAUSE_JUDGE_PANEL=1` switches to a single judge whose own confidence must reach 0.8.
 
 The three reviewers are the same model with different instructions, so they can share a blind spot and agree on the same mistake.
@@ -171,7 +173,8 @@ rm -f data/clause.db* && pnpm db:init && pnpm db:seed
 | `DEEPSEEK_API_KEY` | Drafting, page judgement, mediation | platform.deepseek.com > API keys. |
 | `DEEPSEEK_BASE_URL` | Optional | Defaults to `https://api.deepseek.com`. |
 | `CLAUSE_MODEL` | Optional | Defaults to `deepseek-flash`. The model must accept images; `deepseek-v4-pro` does not. |
-| `GITHUB_TOKEN` | Optional | Raises GitHub API rate limits for the code-bounty checks. A personal access token with no extra permissions reads public repositories. |
+| `GITHUB_TOKEN` | Optional | Raises GitHub API rate limits for the code-bounty checks; a personal access token with no extra permissions reads public repositories. To post verdicts on pull requests (`CLAUSE_GITHUB_PR_COMMENTS`) the token must be able to comment: on a public repository its owner does not own, that needs a classic personal access token with the `public_repo` scope, because fine-grained tokens only reach repositories of their own resource owner. Comments appear under the token owner's account. |
+| `CLAUSE_GITHUB_PR_COMMENTS` | Optional | `1` (or `true`, `yes`, `on`) posts each finished code-bounty run's verdict as a comment on the pull request, edited in place on later runs. Off by default, and it also needs `GITHUB_TOKEN`; with the setting on and no token, each run records why nothing was posted. `0`, `false`, `no` or `off` turn it off; any other value is recorded as a failed post on each run. |
 | `CLAUSE_CONTEST_WINDOW_SECONDS` | Optional | Seconds between a pass and the automatic payout. Defaults to 0. |
 | `CLAUSE_DB_PATH` | Optional | SQLite file. Defaults to `data/clause.db`. |
 | `CLAUSE_JUDGE_PANEL` | Optional | How many reviewers judge each page for an AI judgement check, 1 to 6. Defaults to 3; 1 is a single judge. |
@@ -232,7 +235,7 @@ To try a code bounty instead, you need a repository you can merge into: the pull
 pnpm typecheck && pnpm lint && pnpm test && pnpm build
 ```
 
-`pnpm test` runs the Vitest suite (844 tests in 32 files on 12 Nov 2026): the state machine, every check kind (website checks against local fixture pages in a real Chromium), the network guard, the reviewer panel's rule, receipts and the checker's rules, agent tokens and the MCP tools, the PayPal module and webhook handling with PayPal's HTTP responses mocked, the GitHub checks with GitHub's responses mocked, the AI modules with a mocked client, and the HTTP routes. Point `CLAUSE_DB_PATH` at a scratch file when running it next to a database you care about.
+`pnpm test` runs the Vitest suite (879 tests in 33 files on 12 Nov 2026): the state machine, every check kind (website checks against local fixture pages in a real Chromium), the network guard, the reviewer panel's rule, receipts and the checker's rules, agent tokens and the MCP tools, the PayPal module and webhook handling with PayPal's HTTP responses mocked, the GitHub checks with GitHub's responses mocked, the AI modules with a mocked client, and the HTTP routes. Point `CLAUSE_DB_PATH` at a scratch file when running it next to a database you care about.
 
 Three scripts run against the real services and need `.env`:
 
@@ -269,6 +272,7 @@ One Next.js app (App Router, TypeScript): pages and JSON route handlers in the s
     |      |      |-- website checks: Chromium -> guard proxy -----------> the submitted URL
     |      |      |-- page judgement: three reviewers, screenshots + text -> DeepSeek API
     |      |      '-- signed receipt (Ed25519)
+    |      |-- verdict comment on the pull request (opt-in) --------------> GitHub REST API
     |      '-- money: order, authorize, capture, void, payout, refund ---> PayPal REST (sandbox)
     |
     +-- SQLite data/clause.db, screenshots data/evidence/, signing key data/verifier-signing-key.pem
@@ -311,7 +315,7 @@ The `Dockerfile` builds on `mcr.microsoft.com/playwright:v1.65.0-noble`, which s
 
 - DeepSeek: the drafter, mediator and reviewer panel, in the evaluations above, and in the browser QA run of 12 Nov 2026 (`docs/qa-report.md`).
 - Chromium: every website check against local fixture pages, and the draft, sign, submit, fail, resubmit, pass sequence with `https://info.cern.ch/` and `https://example.com/`, over HTTP against a local production build and in the browser (the PayPal hold faked with `scripts/flow-e2e.ts`).
-- GitHub: one code-bounty check against a real pull request, which failed as designed because it was merged before the contract was signed. No passing live code bounty is recorded.
+- GitHub: one code-bounty check against a real pull request, which failed as designed because it was merged before the contract was signed. No passing live code bounty is recorded. Posting the verdict on a pull request has not been run against GitHub; it is unit-tested with GitHub's responses mocked.
 - PayPal sandbox: getting a token; creating an `AUTHORIZE` order (with idempotent replay), read back from PayPal with the right intent, amount and contract id; the JS SDK v6 button rendering and opening PayPal's sandbox checkout window; and **payouts, from the command line** (`scripts/paypal-smoke.ts payout`), including recovery of a payout whose reply was lost.
 - MCP: `scripts/agent-demo.ts`, a buyer's agent over Streamable HTTP and a worker's agent over stdio, drafting, signing, submitting, reading the verdict and checking the receipt (`holds: true`), against a scratch database with the payer's approval simulated.
 

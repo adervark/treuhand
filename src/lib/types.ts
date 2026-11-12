@@ -107,6 +107,11 @@ export const EVENT_KINDS = [
   "PAYOUT_RETRIED",
   // The last payout attempt came back too; the worker's share was refunded to the payer.
   "PAYOUT_ABANDONED",
+  // A finished run's verdict was posted on a code bounty's pull request (CLAUSE_GITHUB_PR_COMMENTS):
+  // detail.pull_request, detail.comment_id, detail.comment_url, detail.action ("created" | "updated").
+  "GITHUB_COMMENT_POSTED",
+  // That post did not happen (detail.reason); the run's outcome and the money are unaffected.
+  "GITHUB_COMMENT_FAILED",
 ] as const;
 export const EventKindSchema = z.enum(EVENT_KINDS);
 export type EventKind = z.infer<typeof EventKindSchema>;

@@ -80,6 +80,37 @@ export function githubToken(): string | undefined {
   return read("GITHUB_TOKEN");
 }
 
+/**
+ * Opt-in: post each finished run's verdict as a comment on a code bounty's
+ * pull request (src/lib/contract/service-pr-comment.ts). Off unless set to
+ * 1, true, yes or on; it also needs GITHUB_TOKEN.
+ */
+export function githubPrComments(): boolean {
+  const raw = read("CLAUSE_GITHUB_PR_COMMENTS")?.toLowerCase();
+  if (raw === undefined || ["0", "false", "no", "off"].includes(raw)) return false;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  throw new Error(`CLAUSE_GITHUB_PR_COMMENTS must be 1 or 0 (or true/false, yes/no, on/off), got "${raw}"`);
+}
+
+/**
+ * The app's public origin from RENDER_EXTERNAL_URL (the base page metadata
+ * uses), or undefined when it is unset, not https, or a loopback host: links
+ * posted outside the app never point at localhost.
+ */
+export function publicAppUrl(): string | undefined {
+  const raw = read("RENDER_EXTERNAL_URL");
+  if (!raw) return undefined;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return undefined;
+  }
+  const host = url.hostname.toLowerCase();
+  const loopback = host === "localhost" || host.endsWith(".localhost") || /^127\./.test(host) || host === "[::1]" || host === "0.0.0.0";
+  return url.protocol === "https:" && !loopback ? url.origin : undefined;
+}
+
 /** Seconds between PASSED and automatic payout; 0 (the default) pays at once. */
 export function contestWindowSeconds(): number {
   const raw = read("CLAUSE_CONTEST_WINDOW_SECONDS");
