@@ -36,6 +36,24 @@ DISPUTED / ESCALATED -> EXPIRED      (deadline passed with no split both accepte
 PASSED -> SETTLED                    (PayPal returned all three payouts: payer refunded in full)
 ```
 
+## Agent design principles
+
+Treuhand lets an AI's answer move money, and lets other AI agents be its customers. These are the rules it is built on, each with the place in the code that enforces it.
+
+| Principle | What it means here | Where |
+|---|---|---|
+| **Code decides facts; the model decides only what code cannot** | Seven of the eight check kinds are decided by code (GitHub's API, a real browser). The model is asked one narrow question, about one agreed criterion. | `src/lib/verifier/index.ts`, `website.ts`, `github.ts` |
+| **Abstain, never guess** | Three reviewers with different briefs judge independently. A pass or a fail needs all three at 0.8 confidence or more. A split, an unsure reviewer, a timeout or a model error is "inconclusive", and no money moves on it. | `decidePanel` in `src/lib/verifier/ai-judgement.ts` |
+| **Everything the agent reads is data, never instructions** | The page is written by the person who gets paid. Only text a visitor can see reaches the model, page reads run in an isolated JavaScript world, screenshots overrule extracted text, and the mediator ignores instructions inside arguments and evidence. | `src/lib/verifier/ai-judgement.ts`, `visible-text.ts`, `src/lib/ai/prompts.ts` |
+| **Least privilege, and a person approves the money** | An agent token acts as one party with read, write and (only if granted) sign scopes. No scope can fund: the payer approves in PayPal's own window. The server derives what each party may do; the interface and the agents only see that list. | `src/lib/agent/tokens.ts`, `src/lib/contract/service-rules.ts` |
+| **The model proposes inside limits that code enforces** | Every model reply is JSON checked against a schema and retried with the problem spelled out, at most three times. The drafter must refuse a condition no machine can check. The mediator's split must lie between zero and the contract amount, and both parties must accept it. | `src/lib/ai/structured.ts`, `drafter.ts`, `src/lib/contract/service-dispute.ts` |
+| **Show the work** | Each verdict carries its reasoning, evidence and screenshots. The work log shows every step the verifier took, with timings, while it runs. The drafter says how it read each ambiguous phrase before anyone signs. | `src/lib/verifier/trace.ts`, `src/components/contract/work-log-view.tsx` |
+| **Leave a record that can be checked without trusting us** | Every run ends in an Ed25519-signed receipt over the terms, the verdicts and hashes of the evidence, checked by a script that needs only Node's crypto. It proves the record was not changed; it does not prove the operator was honest, and the README says so. | `src/lib/verifier/receipt-core.ts`, `scripts/verify-receipt.ts` |
+| **Fail closed, and make every step safe to repeat** | A check that cannot finish is inconclusive, not a pass. Every PayPal call carries a deterministic idempotency key, a contract is claimed before any money step so two requests cannot pay twice, and a failed step resumes where it stopped. | `src/lib/paypal/index.ts`, `src/lib/contract/service-claims.ts`, `service-money.ts` |
+| **Watching the agent must not change what it does** | The work log's recorder cannot alter a verdict, and settlement never reads a receipt: both are records, not gates. | `src/lib/verifier/trace.ts`, `src/lib/contract/service-verify.ts` |
+
+Where a principle has a known gap, "Status and limitations" names it: the three reviewers share one model, and a worker's server can show the verifier a different page from the one people see.
+
 ## The verifier
 
 ### Facts by code, one judgement by a panel

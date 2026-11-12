@@ -55,6 +55,20 @@ One Next.js 16 app in TypeScript, with SQLite through better-sqlite3 and Tailwin
 
 We built it with Claude Code agents working in parallel lanes (money, AI, verifier, contract flow, interface, agents, QA) against a written spec, with people handling the accounts, the video and the submission.
 
+### Agent design principles
+
+Treuhand lets an AI's answer move money, so it is built on a short set of rules (the README has the table, with the file that enforces each):
+
+- **Code decides facts; the model decides only what code cannot.** Seven of eight check kinds never reach the model.
+- **Abstain, never guess.** A pass or a fail needs three differently briefed reviewers to agree at 0.8 confidence or more; anything else moves no money.
+- **Everything the agent reads is data, never instructions.** The page is written by the person who gets paid.
+- **Least privilege, and a person approves the money.** No agent token can fund, whatever it is granted.
+- **The model proposes inside limits that code enforces.** Schema-checked replies, a drafter that must refuse what cannot be checked, a mediator whose split both parties must accept.
+- **Show the work.** Reasoning, evidence, screenshots, and a live work log of every step with timings.
+- **Leave a record that can be checked without trusting us.** A signed receipt and a short checker script.
+- **Fail closed, and make every step safe to repeat.** An unfinished check is never a pass, and no retry can move money twice.
+- **Watching the agent must not change what it does.** The work log and the receipt are records, not gates.
+
 ### Challenges we ran into
 
 - **A confident model is not a calibrated one.** Our single judge reported a confidence between 0.90 and 0.99 on every one of 136 evaluation judgements, which says little about when it might be wrong, so its own confidence is a poor gate for money. We moved to a panel of differently briefed reviewers whose agreement is the confidence, following "Trust or Escalate" (arXiv 2407.18370), and made disagreement an abstention rather than a guess.
