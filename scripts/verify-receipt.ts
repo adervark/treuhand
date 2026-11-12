@@ -1,5 +1,5 @@
 /**
- * Checks Proviso verification receipts independently of the app's database:
+ * Checks Treuhand verification receipts independently of the app's database:
  * recomputes each receipt's hash from its content, checks the Ed25519
  * signature against the verifier's public key, and, given the contract,
  * recomputes the agreed-terms hash and compares each verdict's evidence and

@@ -72,7 +72,7 @@ function token(role: Party, options: { allowSign?: boolean; readOnly?: boolean }
 
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 const post = (body?: unknown) =>
-  new Request("http://proviso.test/api", {
+  new Request("http://treuhand.test/api", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -104,7 +104,7 @@ describe("a token acts as its party", () => {
     const contract = newContract();
     request.cookies.set(VIEW_AS_COOKIE, "payer");
     useToken(token("worker", { readOnly: true }));
-    const { status, body } = await read(contractRoute.GET(new Request("http://proviso.test"), params(contract.id)));
+    const { status, body } = await read(contractRoute.GET(new Request("http://treuhand.test"), params(contract.id)));
     expect(status).toBe(200);
     expect(body.viewer).toEqual({ role: "worker" });
   });
@@ -176,16 +176,16 @@ describe("bad tokens", () => {
     revokeAgentToken(row.id);
     useToken(secret);
     await expectError(signRoute.POST(post(), params(contract.id)), 401, "UNAUTHORIZED");
-    await expectError(contractRoute.GET(new Request("http://proviso.test"), params(contract.id)), 401, "UNAUTHORIZED");
+    await expectError(contractRoute.GET(new Request("http://treuhand.test"), params(contract.id)), 401, "UNAUTHORIZED");
   });
 
   it("refuses an unknown or malformed token with 401 instead of falling back to the cookie", async () => {
     const contract = newContract();
     request.cookies.set(VIEW_AS_COOKIE, "payer");
-    useToken("proviso_not-a-real-token");
+    useToken("treuhand_not-a-real-token");
     await expectError(signRoute.POST(post(), params(contract.id)), 401, "UNAUTHORIZED");
     request.headers = new Headers({ authorization: "Basic dXNlcjpwYXNz" });
-    await expectError(contractRoute.GET(new Request("http://proviso.test"), params(contract.id)), 401, "UNAUTHORIZED");
+    await expectError(contractRoute.GET(new Request("http://treuhand.test"), params(contract.id)), 401, "UNAUTHORIZED");
   });
 });
 
@@ -193,7 +193,7 @@ describe("the web app's cookie path is unchanged", () => {
   it("acts as the cookie's party with no Authorization header, signing included", async () => {
     const contract = newContract();
     request.cookies.set(VIEW_AS_COOKIE, "worker");
-    const { body } = await read(contractRoute.GET(new Request("http://proviso.test"), params(contract.id)));
+    const { body } = await read(contractRoute.GET(new Request("http://treuhand.test"), params(contract.id)));
     expect(body.viewer).toEqual({ role: "worker" });
     expect((await read(signRoute.POST(post(), params(contract.id)))).status).toBe(200);
     expect(getContract(contract.id)?.worker_signed_at).not.toBeNull();

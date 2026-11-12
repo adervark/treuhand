@@ -72,7 +72,7 @@ function waitingCopy(contract: Contract, role: Party, dispute: Dispute | null): 
     case "SETTLED":
       return dispute ? "Settled by the agreed split." : "PayPal returned the payout 3 times, so the payer was refunded in full.";
     case "ESCALATED":
-      return "The parties did not agree on the split. A person at Proviso decides.";
+      return "The parties did not agree on the split. A person at Treuhand decides.";
   }
 }
 
@@ -487,7 +487,7 @@ function AnswerProposal({
           </Button>
         ) : null}
       </div>
-      {canDecline ? <p className="text-xs text-ink-3">Declining sends the case to a person at Proviso.</p> : null}
+      {canDecline ? <p className="text-xs text-ink-3">Declining sends the case to a person at Treuhand.</p> : null}
       {error ? <Banner title="Not recorded">{error}</Banner> : null}
       <p className="text-xs text-ink-3">
         Proposed <LocalTime iso={dispute.updated_at} />

@@ -21,7 +21,7 @@ export const VIEW_AS_COOKIE = "clause_view_as";
  * on every request. A write whose header differs from the cookie answers 409
  * ROLE_MISMATCH: another tab switched the role since this page rendered.
  */
-export const PAGE_ROLE_HEADER = "x-proviso-role";
+export const PAGE_ROLE_HEADER = "x-treuhand-role";
 
 /**
  * Defaults to "payer" when the cookie is missing or invalid. With an agent

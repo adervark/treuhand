@@ -1,6 +1,6 @@
 /**
  * TEST-ONLY demo: a buyer's agent and a worker's agent run a whole contract
- * through Proviso's MCP tools, each through a real MCP client from the SDK,
+ * through Treuhand's MCP tools, each through a real MCP client from the SDK,
  * against a running app on a scratch database. Not part of the app.
  *
  *   CLAUSE_DB_PATH=/tmp/demo.db pnpm exec tsx scripts/agent-demo.ts [--app http://localhost:3400] [--url https://example.com/]
@@ -103,7 +103,7 @@ async function workerClient(token: string): Promise<Client> {
     new StdioClientTransport({
       command: TSX,
       args: [path.join(ROOT, "scripts", "mcp-server.ts")],
-      env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", PROVISO_URL: APP, PROVISO_TOKEN: token },
+      env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", TREUHAND_URL: APP, TREUHAND_TOKEN: token },
       stderr: "inherit",
     }),
   );
@@ -159,7 +159,7 @@ interface Verification {
 
 async function main(): Promise<void> {
   const db = requireSeparateDb();
-  console.log(`Proviso agent demo against ${APP} (database ${db})`);
+  console.log(`Treuhand agent demo against ${APP} (database ${db})`);
 
   const buyerToken = createAgentToken({ role: "payer", allowSign: true, label: "demo buyer agent" });
   const workerToken = createAgentToken({ role: "worker", allowSign: true, label: "demo worker agent" });

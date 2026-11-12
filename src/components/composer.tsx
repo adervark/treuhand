@@ -273,7 +273,7 @@ export function Composer({ intro, outro, identities }: { intro: ReactNode; outro
 
   if (!started) {
     return (
-      // From 3xl three columns, top-aligned under the header: what Proviso is (the introduction over the
+      // From 3xl three columns, top-aligned under the header: what Treuhand is (the introduction over the
       // example run), the composer in the middle with a text box of a set height and the examples written
       // out, and "How a contract travels" on the right as a rail as tall as the other two. `home-scale`
       // (globals.css) enlarges the whole workspace from 4xl, so it reaches down the window with larger type.
@@ -658,7 +658,7 @@ function PartyField({ role, identity }: { role: "payer" | "worker"; identity: Id
           <span className="text-ink-3">Not set up: run pnpm db:seed</span>
         )}
       </div>
-      <p className="text-xs text-ink-3">Demo account. Proviso has no sign-up; both parties are seeded sandbox identities.</p>
+      <p className="text-xs text-ink-3">Demo account. Treuhand has no sign-up; both parties are seeded sandbox identities.</p>
     </div>
   );
 }

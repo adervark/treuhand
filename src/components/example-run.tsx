@@ -2,7 +2,7 @@
 
 /**
  * The home page's example run: an illustration, built from fixed example data,
- * of what Proviso does with delivered work. It plays through once when it comes
+ * of what Treuhand does with delivered work. It plays through once when it comes
  * into view, like a terminal: the tests resolve one by one, the three AI
  * reviewers vote in turn, a hidden instruction to the verifier is caught, the
  * verifier signs its receipt, and the hold is captured and paid out. Then it

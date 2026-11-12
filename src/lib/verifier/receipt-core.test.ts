@@ -77,11 +77,11 @@ describe("termsSha256", () => {
       '{"amount_cents":20000,"conditions":[{"check_kind":"http_ok","check_params":{},"text":"Loads"},' +
       '{"check_kind":"dom_assert","check_params":{"selector":"form","text":"Send"},"text":"Has a form"}],' +
       '"contract_id":"c1","currency":"USD","deadline_at":"2026-11-14T00:00:00.000Z","payer_email":"p@x.test",' +
-      '"schema":"proviso.terms/1","type":"website_milestone","worker_email":"w@x.test"}';
+      '"schema":"treuhand.terms/1","type":"website_milestone","worker_email":"w@x.test"}';
     expect(canonicalJson(canonicalTerms({ contract: CONTRACT, conditions: CONDITIONS }))).toBe(expected);
     // Pinned with `printf '%s' '<expected>' | sha256sum`.
     expect(termsSha256({ contract: CONTRACT, conditions: CONDITIONS })).toBe(
-      "bba1e2a8a960c66a1627f84a0cd7bf8d5c0c9769251a4e42542bba8622601f9a",
+      "be9d46e6626b52925588d73c97cddf8578171ed056ccd8affe744faf06d866d3",
     );
   });
 

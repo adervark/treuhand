@@ -1,4 +1,4 @@
-# PayPal sandbox reference for Proviso (holds by authorization, payouts by email)
+# PayPal sandbox reference for Treuhand (holds by authorization, payouts by email)
 
 Checked against PayPal's own docs and repos on 2026-11-11. Every claim carries a label and a source.
 
@@ -449,7 +449,7 @@ async function onPayPalWebSdkLoaded() {
 
 - `create_order` hard-codes `intent: 'CAPTURE'` (`src/shared/payloadUtils.ts`, line 197).
 - `pay_order` calls `POST /v2/checkout/orders/{id}/capture` (`src/shared/functions.ts`). PayPal rejects that call on an AUTHORIZE order with `ACTION_DOES_NOT_MATCH_INTENT`.
-- Neither tool works for Proviso's hold-then-pay flow.
+- Neither tool works for Treuhand's hold-then-pay flow.
 
 ### What must be direct REST
 
@@ -562,7 +562,7 @@ The [User Agreement](https://www.paypal.com/us/legalhub/paypal/useragreement-ful
 1. **"An authorization is guaranteed for 3 days."** The 3 days are an honor period with the best capture odds, not a guarantee: "Payment capture is subject to risk and money availability." The 29-day maximum is correct.
 2. **"Authorization holds last days, not weeks."** Holds are valid for 29 days, and you can reauthorize from day 4 (docs conflict on whether more than once).
 3. **"On expiry, void"** needs our own timer. Sandbox authorizations never expire on their own. Demo the expiry by calling void ourselves, or force `AUTHORIZATION_EXPIRED` with `PayPal-Mock-Response`.
-4. **"The AI agents call PayPal through PayPal's own agent tooling."** The toolkit cannot authorize, capture an authorization, void or pay out. Its `create_order` is CAPTURE-only, and `pay_order` would fail on our orders. Settlement must be direct REST, which is what Proviso does. The agents' PayPal tools are realistically `get_order`, `create_refund`/`get_refund` and `list_transactions`, or the MCP server. The toolkit also pins `ai@^4`.
+4. **"The AI agents call PayPal through PayPal's own agent tooling."** The toolkit cannot authorize, capture an authorization, void or pay out. Its `create_order` is CAPTURE-only, and `pay_order` would fail on our orders. Settlement must be direct REST, which is what Treuhand does. The agents' PayPal tools are realistically `get_order`, `create_refund`/`get_refund` and `list_transactions`, or the MCP server. The toolkit also pins `ai@^4`.
 5. **JS SDK v6 with AUTHORIZE is undocumented.** No official v6 page shows the authorize flow. It should work because the intent is set on the server, but spike it first. The documented fallback is v5 with `&intent=authorize`, which is labeled deprecated.
 6. **Webhooks need a public HTTPS:443 URL.** There is no localhost delivery, and simulator events cannot be verified through the API. Use a tunnel or the deployed URL, and also poll `GET` the authorization or payout batch so the demo does not depend on webhooks arriving.
 7. **The split flow needs a caveat.** "Capture, partial payout, partial refund" is fully documented and is the safe path. The cheaper variant, a partial capture of only the worker's share with `final_capture: true`, depends on partial capture being enabled on the account, which I could not confirm for the sandbox.

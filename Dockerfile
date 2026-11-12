@@ -1,4 +1,4 @@
-# Proviso: one Next.js app. The verifier drives headless Chromium through
+# Treuhand: one Next.js app. The verifier drives headless Chromium through
 # Playwright, so the base image is Playwright's own: it ships Chromium and
 # every system library Chromium needs, for exactly one Playwright version.
 # Keep this tag equal to the `playwright` version in pnpm-lock.yaml (1.65.0).

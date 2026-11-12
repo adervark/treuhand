@@ -121,7 +121,7 @@ function describe(e: ClauseEvent, currency: string): Line {
       return { text: `The AI recorded ${n === 1 ? "a note" : `${n || ""} notes`.trim()} on how it read the deal`, tone: "info", refs };
     }
     case "PAYPAL_WEBHOOK":
-      return { text: `PayPal notified Proviso${str(d.event_type) ? `: ${d.event_type}` : ""}`, tone: "money", refs };
+      return { text: `PayPal notified Treuhand${str(d.event_type) ? `: ${d.event_type}` : ""}`, tone: "money", refs };
     default:
       return { text: humanize(e.kind), tone: "neutral", refs };
   }

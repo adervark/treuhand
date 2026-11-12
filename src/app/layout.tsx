@@ -33,11 +33,11 @@ const DESCRIPTION =
 export const metadata: Metadata = {
   // Absolute URLs for the Open Graph image: the deployed address on Render, this machine otherwise.
   metadataBase: new URL(process.env.RENDER_EXTERNAL_URL ?? `http://localhost:${process.env.PORT ?? 3000}`),
-  title: { default: "Proviso · contracts that pay themselves", template: "%s · Proviso" },
+  title: { default: "Treuhand · contracts that pay themselves", template: "%s · Treuhand" },
   description: DESCRIPTION,
-  applicationName: "Proviso",
-  openGraph: { type: "website", siteName: "Proviso", title: "Proviso · contracts that pay themselves", description: DESCRIPTION },
-  twitter: { card: "summary_large_image", title: "Proviso · contracts that pay themselves", description: DESCRIPTION },
+  applicationName: "Treuhand",
+  openGraph: { type: "website", siteName: "Treuhand", title: "Treuhand · contracts that pay themselves", description: DESCRIPTION },
+  twitter: { card: "summary_large_image", title: "Treuhand · contracts that pay themselves", description: DESCRIPTION },
 };
 
 export const viewport: Viewport = {
@@ -64,9 +64,9 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <header className={`sticky top-0 z-30 border-b border-rule bg-paper role-band-${role}`}>
           <div className="flex w-full flex-wrap items-stretch justify-between gap-x-4 gap-y-1 px-4 sm:px-6 3xl:px-8">
             <div className="flex min-h-11 items-stretch gap-3 pt-0.5 sm:gap-6">
-              <Link href="/" className="flex items-center gap-2 text-[0.9375rem] font-bold tracking-[-0.01em] text-ink" aria-label="Proviso home">
+              <Link href="/" className="flex items-center gap-2 text-[0.9375rem] font-bold tracking-[-0.01em] text-ink" aria-label="Treuhand home">
                 <BrandMark />
-                Proviso
+                Treuhand
               </Link>
               <nav aria-label="Main" className="flex">
                 <NavLinks />
@@ -82,7 +82,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <main className="w-full flex-1 px-4 py-5 sm:px-6 sm:py-6 3xl:px-8">{children}</main>
         <footer className="border-t border-rule">
           <div className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-[0.75rem] text-ink-3 sm:px-6 3xl:px-8">
-            <span>Proviso · contracts that pay themselves</span>
+            <span>Treuhand · contracts that pay themselves</span>
             <span>PayPal sandbox · no real money moves</span>
           </div>
         </footer>

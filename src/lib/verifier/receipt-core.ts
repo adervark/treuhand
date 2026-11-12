@@ -19,8 +19,8 @@
  */
 import { createHash, createPublicKey, verify, type KeyObject } from "node:crypto";
 
-export const TERMS_SCHEMA = "proviso.terms/1";
-export const RECEIPT_SCHEMA = "proviso.receipt/1";
+export const TERMS_SCHEMA = "treuhand.terms/1";
+export const RECEIPT_SCHEMA = "treuhand.receipt/1";
 export const SIGNATURE_ALGORITHM = "Ed25519";
 
 // ---------------------------------------------------------------------------

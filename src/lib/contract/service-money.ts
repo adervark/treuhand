@@ -200,7 +200,7 @@ async function ensurePayoutSent(contractId: string, action: ClaimAction, amountC
         receiverEmail: contract.worker_email,
         amountCents,
         currency: contract.currency,
-        note: `Proviso: ${contract.title}`,
+        note: `Treuhand: ${contract.title}`,
         attempt,
       });
     } catch (err) {
@@ -405,7 +405,7 @@ async function ensureRefunded(
       captureId: contract.paypal_capture_id!,
       amountCents,
       currency: contract.currency,
-      note: `Proviso: ${contract.title} (${why})`,
+      note: `Treuhand: ${contract.title} (${why})`,
       ...(reason ? { reason } : {}),
     }),
   );

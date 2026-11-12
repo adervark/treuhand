@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { BRAND } from "@/components/brand";
 
-// The app icon for a phone's home screen: Proviso's mark, full bleed (the platform rounds the corners).
+// The app icon for a phone's home screen: Treuhand's mark, full bleed (the platform rounds the corners).
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 

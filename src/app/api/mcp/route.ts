@@ -1,5 +1,5 @@
 /**
- * `/api/mcp`: Proviso's MCP server over Streamable HTTP, for AI agents
+ * `/api/mcp`: Treuhand's MCP server over Streamable HTTP, for AI agents
  * (tools in src/lib/agent/mcp-server.ts, guide in docs/agents.md).
  *
  * Every request needs `Authorization: Bearer <agent token>`
@@ -40,7 +40,7 @@ function baseUrlOf(request: Request): string {
 }
 
 function unauthorized(response: Response): Response {
-  if (response.status === 401) response.headers.set("WWW-Authenticate", 'Bearer realm="proviso"');
+  if (response.status === 401) response.headers.set("WWW-Authenticate", 'Bearer realm="treuhand"');
   return response;
 }
 

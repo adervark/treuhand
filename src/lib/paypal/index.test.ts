@@ -607,7 +607,7 @@ describe("payout", () => {
     expect(call.method).toBe("POST");
     expect(call.headers.get("paypal-request-id")).toBe("clause:payout:c-1");
     expect(lastBody()).toEqual({
-      sender_batch_header: { sender_batch_id: "clause:payout:c-1", email_subject: "You have a payout from Proviso" },
+      sender_batch_header: { sender_batch_id: "clause:payout:c-1", email_subject: "You have a payout from Treuhand" },
       items: [
         {
           recipient_type: "EMAIL",

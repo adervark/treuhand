@@ -31,16 +31,16 @@ export interface SweepResult {
 }
 
 /** Fired on `window` when the server says another tab switched the role; `RoleSync` refreshes the page. */
-export const ROLE_CHANGED_EVENT = "proviso:role-changed";
+export const ROLE_CHANGED_EVENT = "treuhand:role-changed";
 
 export async function api<T>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
   const method = init.method ?? (init.body === undefined ? "GET" : "POST");
   const headers: Record<string, string> = {};
   if (init.body !== undefined) headers["Content-Type"] = "application/json";
   // The role this page was rendered for (`data-viewer` on <html>); the server refuses a write
-  // when the shared view-as cookie names the other role (X-Proviso-Role, docs/api.md).
+  // when the shared view-as cookie names the other role (X-Treuhand-Role, docs/api.md).
   const shown = typeof document === "undefined" ? undefined : document.documentElement.dataset.viewer;
-  if (shown) headers["X-Proviso-Role"] = shown;
+  if (shown) headers["X-Treuhand-Role"] = shown;
   let res: Response;
   try {
     res = await fetch(path, {

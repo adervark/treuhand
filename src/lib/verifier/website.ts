@@ -15,7 +15,7 @@ import { VISIBLE_TEXT_JS } from "./visible-text";
 
 const HTTP_TIMEOUT_MS = 15_000;
 const MAX_REDIRECTS = 5;
-const USER_AGENT = "Mozilla/5.0 (compatible; ProvisoVerifier/1.0)";
+const USER_AGENT = "Mozilla/5.0 (compatible; TreuhandVerifier/1.0)";
 const SUCCESS_WAIT_MS = 10_000;
 
 async function screenshotEvidence(ctx: CheckContext, page: Page, label: string, take: () => Promise<Buffer>): Promise<string[]> {

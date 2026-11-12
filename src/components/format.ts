@@ -65,10 +65,10 @@ export const CONTRACT_TYPE_META: Record<ContractType, { label: string; short: st
 
 export const LEDGER_KIND_META: Record<LedgerKind, { label: string; tone: Tone; flow: string }> = {
   AUTHORIZED: { label: "Hold placed", tone: "held", flow: "Payer → PayPal hold" },
-  CAPTURED: { label: "Captured", tone: "held", flow: "Hold → Proviso" },
-  PAID_OUT: { label: "Paid to worker", tone: "paid", flow: "Proviso → Worker" },
+  CAPTURED: { label: "Captured", tone: "held", flow: "Hold → Treuhand" },
+  PAID_OUT: { label: "Paid to worker", tone: "paid", flow: "Treuhand → Worker" },
   VOIDED: { label: "Hold released", tone: "returned", flow: "Hold → Payer" },
-  REFUNDED: { label: "Refunded", tone: "returned", flow: "Proviso → Payer" },
+  REFUNDED: { label: "Refunded", tone: "returned", flow: "Treuhand → Payer" },
 };
 
 /** How each check kind works, in words a payer understands. */
@@ -96,7 +96,7 @@ export function actorLabel(actor: unknown): { label: string; tone: Tone } {
     case "paypal":
       return { label: "PayPal", tone: "neutral" };
     default:
-      return { label: "Proviso", tone: "neutral" };
+      return { label: "Treuhand", tone: "neutral" };
   }
 }
 

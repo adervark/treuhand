@@ -15,7 +15,7 @@ export const SERVICE_ERROR_CODES = [
   "BUSY",
   "DISPUTE_STATE",
   "IDENTITIES_MISSING",
-  // The page sent a role (X-Proviso-Role) other than the view-as cookie's: another tab switched it.
+  // The page sent a role (X-Treuhand-Role) other than the view-as cookie's: another tab switched it.
   "ROLE_MISMATCH",
   "PAYPAL_ERROR",
   "AI_ERROR",

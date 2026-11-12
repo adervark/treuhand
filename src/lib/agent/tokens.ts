@@ -15,7 +15,7 @@
  * Funding is never available to a token: the payer approves the PayPal
  * payment in PayPal's own window.
  *
- * A token is `proviso_` + 32 random bytes (base64url). Only its SHA-256 is
+ * A token is `treuhand_` + 32 random bytes (base64url). Only its SHA-256 is
  * stored; a fast hash is enough for a 256-bit random secret, and looking it up
  * by hash never compares the secret itself.
  */
@@ -30,7 +30,7 @@ import type { Party } from "@/lib/types";
 
 export { AGENT_SCOPES, type AgentScope, type AgentTokenRow } from "@/lib/db/agent-tokens";
 
-export const TOKEN_PREFIX = "proviso_";
+export const TOKEN_PREFIX = "treuhand_";
 
 /** SHA-256 (hex) of the token's UTF-8 bytes: what the database stores. */
 export function hashToken(token: string): string {
@@ -88,7 +88,7 @@ export function agentFromAuthorization(header: string | null | undefined): Agent
   if (!match) throw new AgentAuthError("UNAUTHORIZED", "The Authorization header must be `Bearer <agent token>`.");
   const token = match[1];
   if (!token.startsWith(TOKEN_PREFIX)) {
-    throw new AgentAuthError("UNAUTHORIZED", `That is not a Proviso agent token (they start with "${TOKEN_PREFIX}").`);
+    throw new AgentAuthError("UNAUTHORIZED", `That is not a Treuhand agent token (they start with "${TOKEN_PREFIX}").`);
   }
   const row = findAgentTokenByHash(hashToken(token));
   if (!row) throw new AgentAuthError("UNAUTHORIZED", "Unknown agent token.");

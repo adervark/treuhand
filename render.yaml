@@ -1,4 +1,4 @@
-# Render Blueprint for Proviso: one Docker web service built from ./Dockerfile,
+# Render Blueprint for Treuhand: one Docker web service built from ./Dockerfile,
 # plus a cron job that runs the deadline sweep.
 #
 # Memory: measured locally, the server idles at about 190 MB and peaked at
@@ -21,7 +21,7 @@
 
 services:
   - type: web
-    name: proviso
+    name: treuhand
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .
@@ -68,7 +68,7 @@ services:
   # when no contract page is open to do it. Calls the web service over Render's
   # private network (same region). Billed by run time, $1 monthly minimum.
   - type: cron
-    name: proviso-sweep
+    name: treuhand-sweep
     runtime: node
     plan: 0.5c-512mb
     region: oregon
@@ -80,5 +80,5 @@ services:
       - key: CLAUSE_HOSTPORT
         fromService:
           type: web
-          name: proviso
+          name: treuhand
           property: hostport

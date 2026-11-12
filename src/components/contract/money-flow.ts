@@ -79,7 +79,7 @@ function markFailed(leg: LegModel, verb: string): void {
   leg.status = "failed";
   leg.verb = verb;
   leg.tone = "disputed";
-  leg.note = "Proviso tries again automatically";
+  leg.note = "Treuhand tries again automatically";
 }
 
 export function moneyFlow(bundle: ContractBundle): MoneyFlow {
@@ -147,7 +147,7 @@ export function moneyFlow(bundle: ContractBundle): MoneyFlow {
   const capRow = lastOf(ledger, "CAPTURED");
   const captureTrigger =
     state === "ESCALATED"
-      ? "a person at Proviso decides"
+      ? "a person at Treuhand decides"
       : state === "DISPUTED"
         ? split !== null
           ? agreed
@@ -318,7 +318,7 @@ export function moneyFlow(bundle: ContractBundle): MoneyFlow {
                 : split !== null
                   ? ifSplit
                   : escalated
-                  ? "if Proviso decides so"
+                  ? "if Treuhand decides so"
                   : "on a pass",
   };
   const backCents = (voided ? (voidRow?.amount_cents ?? amount) : 0) + refunded;
@@ -344,7 +344,7 @@ export function moneyFlow(bundle: ContractBundle): MoneyFlow {
                 : "hold being released"
               : ifSplit
             : escalated
-              ? "if Proviso decides so"
+              ? "if Treuhand decides so"
               : captured
               ? "if the payout never arrives"
               : "if no pass",

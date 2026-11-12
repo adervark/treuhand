@@ -1,15 +1,15 @@
 /**
- * Proviso's MCP server over stdio, for agents that launch MCP servers as a
+ * Treuhand's MCP server over stdio, for agents that launch MCP servers as a
  * local process (Claude Desktop, Claude Code, Cursor, ...). It talks to a
- * running Proviso app over HTTP: every tools/list and tools/call is relayed
+ * running Treuhand app over HTTP: every tools/list and tools/call is relayed
  * to the app's `/api/mcp` endpoint with the agent token as a bearer token, so
  * the tools, their validation and their errors are exactly the app's
  * (src/lib/agent/mcp-server.ts). Guide: docs/agents.md.
  *
- *   PROVISO_URL=http://localhost:3000 PROVISO_TOKEN=proviso_... pnpm exec tsx scripts/mcp-server.ts
+ *   TREUHAND_URL=http://localhost:3000 TREUHAND_TOKEN=treuhand_... pnpm exec tsx scripts/mcp-server.ts
  *
- * PROVISO_URL   the app's base URL (default http://localhost:3000)
- * PROVISO_TOKEN an agent token from scripts/agent-token.ts (required)
+ * TREUHAND_URL   the app's base URL (default http://localhost:3000)
+ * TREUHAND_TOKEN an agent token from scripts/agent-token.ts (required)
  *
  * stdout carries the MCP protocol; everything else goes to stderr. Imports
  * only the MCP SDK, so it runs from any working directory.
@@ -18,23 +18,23 @@ import { Client, StreamableHTTPClientTransport, type CallToolResult } from "@mod
 import { Server } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 
-const NAME = "proviso";
+const NAME = "treuhand";
 const VERSION = "1.0.0";
 
 function fail(message: string): never {
-  console.error(`proviso mcp: ${message}`);
+  console.error(`treuhand mcp: ${message}`);
   process.exit(1);
 }
 
-const baseUrl = (process.env.PROVISO_URL?.trim() || "http://localhost:3000").replace(/\/+$/, "");
-const token = process.env.PROVISO_TOKEN?.trim();
-if (!token) fail("set PROVISO_TOKEN to an agent token (create one with scripts/agent-token.ts).");
+const baseUrl = (process.env.TREUHAND_URL?.trim() || "http://localhost:3000").replace(/\/+$/, "");
+const token = process.env.TREUHAND_TOKEN?.trim();
+if (!token) fail("set TREUHAND_TOKEN to an agent token (create one with scripts/agent-token.ts).");
 
 let endpoint: URL;
 try {
   endpoint = new URL(`${baseUrl}/api/mcp`);
 } catch {
-  fail(`PROVISO_URL is not a URL: ${baseUrl}`);
+  fail(`TREUHAND_URL is not a URL: ${baseUrl}`);
 }
 
 /** The text of a tool result's first text block. */
@@ -61,7 +61,7 @@ async function main(): Promise<void> {
   const whoami = await remote.callTool({ name: "whoami", arguments: {} });
   if (whoami.isError) fail(`the app refused the token: ${textOf(whoami)}`);
   const me = JSON.parse(textOf(whoami)) as { role: string; scopes: string[] };
-  console.error(`proviso mcp: relaying to ${endpoint.href} as the ${me.role} (scopes: ${me.scopes.join(", ")})`);
+  console.error(`treuhand mcp: relaying to ${endpoint.href} as the ${me.role} (scopes: ${me.scopes.join(", ")})`);
 
   serveStdio(
     () => {
@@ -83,7 +83,7 @@ async function main(): Promise<void> {
       });
       return server;
     },
-    { onerror: (error) => console.error("proviso mcp:", error.message) },
+    { onerror: (error) => console.error("treuhand mcp:", error.message) },
   );
 }
 

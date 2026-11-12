@@ -1,6 +1,6 @@
-# Proviso for AI agents
+# Treuhand for AI agents
 
-AI agents can be Proviso's customers. A buyer's agent drafts and opens a
+AI agents can be Treuhand's customers. A buyer's agent drafts and opens a
 contract; a worker's agent reads the tests, submits the work and reads the
 verdict with its evidence and signed receipt; either one follows the money.
 They do it through an MCP server (`/api/mcp`, or the stdio entry
@@ -56,8 +56,8 @@ serves MCP clients of both protocol eras (2026-07-28 and 2025), statelessly.
 Claude Code:
 
 ```bash
-claude mcp add --transport http proviso http://localhost:3000/api/mcp \
-  --header "Authorization: Bearer proviso_..."
+claude mcp add --transport http treuhand http://localhost:3000/api/mcp \
+  --header "Authorization: Bearer treuhand_..."
 ```
 
 A `.mcp.json` (Claude Code project config) or any client that reads the same
@@ -66,10 +66,10 @@ shape:
 ```json
 {
   "mcpServers": {
-    "proviso": {
+    "treuhand": {
       "type": "http",
       "url": "http://localhost:3000/api/mcp",
-      "headers": { "Authorization": "Bearer proviso_..." }
+      "headers": { "Authorization": "Bearer treuhand_..." }
     }
   }
 }
@@ -85,12 +85,12 @@ directory. Use absolute paths:
 ```json
 {
   "mcpServers": {
-    "proviso": {
-      "command": "/path/to/proviso/node_modules/.bin/tsx",
-      "args": ["/path/to/proviso/scripts/mcp-server.ts"],
+    "treuhand": {
+      "command": "/path/to/treuhand/node_modules/.bin/tsx",
+      "args": ["/path/to/treuhand/scripts/mcp-server.ts"],
       "env": {
-        "PROVISO_URL": "http://localhost:3000",
-        "PROVISO_TOKEN": "proviso_..."
+        "TREUHAND_URL": "http://localhost:3000",
+        "TREUHAND_TOKEN": "treuhand_..."
       }
     }
   }
@@ -100,12 +100,12 @@ directory. Use absolute paths:
 Claude Code:
 
 ```bash
-claude mcp add proviso -e PROVISO_URL=http://localhost:3000 -e PROVISO_TOKEN=proviso_... \
-  -- /path/to/proviso/node_modules/.bin/tsx /path/to/proviso/scripts/mcp-server.ts
+claude mcp add treuhand -e TREUHAND_URL=http://localhost:3000 -e TREUHAND_TOKEN=treuhand_... \
+  -- /path/to/treuhand/node_modules/.bin/tsx /path/to/treuhand/scripts/mcp-server.ts
 ```
 
 At start it checks the token with `whoami` and logs to stderr, e.g.
-`proviso mcp: relaying to http://localhost:3000/api/mcp as the worker
+`treuhand mcp: relaying to http://localhost:3000/api/mcp as the worker
 (scopes: read, write)`; an unreachable app or a refused token exits 1 with
 the reason. Do not launch it through `pnpm run`: pnpm prints to stdout,
 which carries the protocol.
@@ -206,12 +206,12 @@ simulated (see below).
 
 ```bash
 # 1. An app on a scratch database (never data/clause.db); next dev reads DeepSeek's key from .env
-export CLAUSE_DB_PATH=/tmp/proviso-demo.db
+export CLAUSE_DB_PATH=/tmp/treuhand-demo.db
 pnpm exec tsx scripts/db-seed.ts --placeholder-identities
 pnpm exec next dev -p 3400          # leave running; in a second terminal:
 
 # 2. Both agents, same CLAUSE_DB_PATH
-CLAUSE_DB_PATH=/tmp/proviso-demo.db pnpm exec tsx scripts/agent-demo.ts --app http://localhost:3400
+CLAUSE_DB_PATH=/tmp/treuhand-demo.db pnpm exec tsx scripts/agent-demo.ts --app http://localhost:3400
 ```
 
 If `pnpm dev` is already running in this directory, start the scratch app
@@ -276,7 +276,7 @@ retirement](https://docs.apimatic.io/web-dashboard-retired/)).
    Code](https://docs.apimatic.io/cli-getting-started/portal-quickstart-dac/)):
 
    ```bash
-   mkdir proviso-portal && cd proviso-portal
+   mkdir treuhand-portal && cd treuhand-portal
    apimatic quickstart
    ```
 
@@ -287,7 +287,7 @@ retirement](https://docs.apimatic.io/web-dashboard-retired/)).
    [Contents of the build
    directory](https://docs.apimatic.io/docs-as-code/contents-of-the-build-directory/)),
    generates the portal and serves it at `http://localhost:3000`. Stop
-   Proviso's own dev server first, or serve the portal on another port with
+   Treuhand's own dev server first, or serve the portal on another port with
    `apimatic portal serve --port 3001`.
 
 5. Regenerate after the API changes, from the directory that contains `src`

@@ -66,7 +66,7 @@ export const IconLock = (p: IconProps) => (
   </Svg>
 );
 
-/** A safe: money captured into Proviso's PayPal balance, waiting to pay out. */
+/** A safe: money captured into Treuhand's PayPal balance, waiting to pay out. */
 export const IconSafe = (p: IconProps) => (
   <Svg {...p}>
     <rect x="4" y="4.5" width="16" height="14" rx="1.5" />

@@ -1,4 +1,4 @@
-# Proviso HTTP API
+# Treuhand HTTP API
 
 The JSON API served by the route handlers in `src/app/api/**` and used by the
 pages in `src/app` and `src/components`: every route, its exact JSON shapes,
@@ -22,7 +22,7 @@ the browser.
 - **Acting party:** the `clause_view_as` cookie (`payer` | `worker`, default
   `payer`), read through `src/lib/viewer.ts`. Set it with the `setViewAs`
   server action. There is no other auth.
-- **Page role:** the pages send `X-Proviso-Role: payer | worker`, the role
+- **Page role:** the pages send `X-Treuhand-Role: payer | worker`, the role
   the page was rendered for, on every request. Every tab of a browser shares
   the cookie, so a tab can be left showing the role another tab switched
   away from; a write that acts as a party (every `POST` and `PATCH` under
@@ -57,7 +57,7 @@ the browser.
 | `BUSY` | 409 | another action (payment, verification, mediation) is running on this contract; retry shortly |
 | `DISPUTE_STATE` | 409 | the dispute is not in a state that allows this (e.g. accept before a proposal) |
 | `IDENTITIES_MISSING` | 409 | demo identities are not seeded; run `pnpm db:seed` |
-| `ROLE_MISMATCH` | 409 | the request's `X-Proviso-Role` is not the `clause_view_as` cookie's role: the role was switched in another tab after this page rendered. Nothing was done; reload the page |
+| `ROLE_MISMATCH` | 409 | the request's `X-Treuhand-Role` is not the `clause_view_as` cookie's role: the role was switched in another tab after this page rendered. Nothing was done; reload the page |
 | `PAYPAL_ERROR` | 502 | a PayPal call failed. Whatever already succeeded is recorded; the step is retried by the next action or sweep. |
 | `AI_ERROR` | 502 | the drafter or mediator failed |
 | `NOT_CONFIGURED` | 503 | an env key is missing (PayPal, DeepSeek); `message` names it |
@@ -373,7 +373,7 @@ receipt is a record only: nothing reads it to decide whether money moves.
 // SignedReceipt (src/lib/verifier/receipt-core.ts)
 {
   "receipt": {
-    "schema": "proviso.receipt/1",
+    "schema": "treuhand.receipt/1",
     "contract_id": string,
     "submission_id": string,
     "submitted_url": string,
@@ -389,7 +389,7 @@ receipt is a record only: nothing reads it to decide whether money moves.
       "evidence_sha256": string,      // SHA-256 of the canonical JSON of the verdict's evidence
       "screenshots": [{ "path": string, "sha256": string | null }]  // the file's bytes; null if missing
     }],
-    "verifier": { "name": string, "version": string, "model": string },  // package name ("proviso") and version, model id
+    "verifier": { "name": string, "version": string, "model": string },  // package name ("treuhand") and version, model id
     "started_at": string, "finished_at": string, "issued_at": string
   },
   "receipt_sha256": string,           // SHA-256 of the canonical JSON of "receipt"
@@ -404,7 +404,7 @@ receipt is a record only: nothing reads it to decide whether money moves.
 **Canonical JSON** is JSON with object keys sorted by UTF-16 code unit (as RFC
 8785) and no whitespace; values are written as `JSON.stringify` writes them.
 **The terms hash** is the SHA-256 of the canonical JSON of
-`{ "schema": "proviso.terms/1", "contract_id", "type", "payer_email",
+`{ "schema": "treuhand.terms/1", "contract_id", "type", "payer_email",
 "worker_email", "amount_cents", "currency", "deadline_at", "conditions": [{
 "text", "check_kind", "check_params" }] }`, conditions in position order,
 values as in `contract` and `conditions` above. It is computed when the

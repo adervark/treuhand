@@ -31,9 +31,9 @@ function authError(fn: () => unknown): AgentAuthError {
 
 describe("hashing", () => {
   it("is the SHA-256 hex of the token's UTF-8 bytes", () => {
-    expect(hashToken("proviso_abc")).toBe(createHash("sha256").update("proviso_abc").digest("hex"));
-    expect(hashToken("proviso_abc")).toMatch(/^[0-9a-f]{64}$/);
-    expect(hashToken("proviso_abc")).not.toBe(hashToken("proviso_abd"));
+    expect(hashToken("treuhand_abc")).toBe(createHash("sha256").update("treuhand_abc").digest("hex"));
+    expect(hashToken("treuhand_abc")).toMatch(/^[0-9a-f]{64}$/);
+    expect(hashToken("treuhand_abc")).not.toBe(hashToken("treuhand_abd"));
   });
 
   it("stores only the hash, never the token", () => {

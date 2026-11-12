@@ -54,7 +54,7 @@ function create(args: string[]): void {
   console.log(token);
   console.log("");
   console.log("This is the only time the token is shown; only its SHA-256 is stored.");
-  console.log("Send it as `Authorization: Bearer <token>`, or set PROVISO_TOKEN for scripts/mcp-server.ts.");
+  console.log("Send it as `Authorization: Bearer <token>`, or set TREUHAND_TOKEN for scripts/mcp-server.ts.");
 }
 
 function list(): void {

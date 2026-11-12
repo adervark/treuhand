@@ -1,5 +1,5 @@
 /**
- * Proviso's mark: a square in the accent with a check, the shape a met
+ * Treuhand's mark: a square in the accent with a check, the shape a met
  * condition takes on the track, so the brand is the product's own vocabulary.
  * The favicon (src/app/icon.svg, favicon.ico), the app icon and the Open Graph
  * image draw the same mark.

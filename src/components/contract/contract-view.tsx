@@ -344,8 +344,8 @@ function FailureBanner({ failure, role }: { failure: NonNullable<ContractBundle[
   const retry = !SWEPT_ACTIONS.has(failure.action)
     ? ""
     : failure.step === "payout" || failure.step === "payout_status"
-      ? " Proviso checks with PayPal again automatically."
-      : " Proviso tries again automatically.";
+      ? " Treuhand checks with PayPal again automatically."
+      : " Treuhand tries again automatically.";
   // PayPal's raw error (request, HTTP status, debug id) is kept on the stored event, not shown here.
   const message = /\bPayPal (?:GET|POST|PUT|PATCH|DELETE) \S+ failed: HTTP \d+/.test(failure.message) ? "PayPal refused the request." : failure.message;
   return (
@@ -428,7 +428,7 @@ function SweepNote({ status }: { status: SweepStatus }) {
         <>Background check with PayPal failed: {status.error}</>
       ) : (
         <>
-          Proviso checks deadlines and payouts with PayPal automatically · last check{" "}
+          Treuhand checks deadlines and payouts with PayPal automatically · last check{" "}
           <RelativeTime iso={new Date(status.at).toISOString()} />
         </>
       )}

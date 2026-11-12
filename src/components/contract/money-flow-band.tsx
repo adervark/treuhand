@@ -207,7 +207,7 @@ export function MoneyFlowBand({ bundle, identities }: { bundle: ContractBundle; 
   const subs: Record<PlaceKey, string> = {
     payer: payerName,
     hold: "authorization",
-    capture: "Proviso's PayPal balance",
+    capture: "Treuhand's PayPal balance",
     worker: workerName,
     returned: payerName,
   };

@@ -25,7 +25,7 @@ export function describeCheck(check: Pick<ConditionCheck, "check_kind" | "check_
     case "github_pr_references_issue":
       return `GitHub is asked whether the pull request references issue #${p.issue ?? "?"} in ${str(p.repo) ?? "the repository"}.`;
     case "http_ok":
-      return `Proviso requests the submitted URL${onPage(p)} and expects a successful (2xx) response.`;
+      return `Treuhand requests the submitted URL${onPage(p)} and expects a successful (2xx) response.`;
     case "dom_assert":
       return str(p.text)
         ? `A browser opens the page${onPage(p)} and looks for ${p.selector} containing "${p.text}".`

@@ -6,7 +6,7 @@ import { BRAND } from "@/components/brand";
 // The image a shared link shows: the mark and name, the headline, the one sentence, and the home page's
 // example run in its final state, drawn in the terminal's dark theme and its typeface (IBM Plex Sans, OFL,
 // src/assets/fonts). Static: generated once at build.
-export const alt = "Proviso: contracts that pay themselves. An example run in which four tests pass and PayPal pays out $400.00.";
+export const alt = "Treuhand: contracts that pay themselves. An example run in which four tests pass and PayPal pays out $400.00.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -36,7 +36,7 @@ export default async function OpengraphImage() {
             <rect width="32" height="32" rx="3" fill={BRAND.accent} />
             <path d="M8.5 16.5 L13.5 21.5 L23.5 10.5" fill="none" stroke={BRAND.on} strokeWidth="4" strokeLinecap="square" />
           </svg>
-          <div style={{ display: "flex", fontSize: 34, fontWeight: 600, letterSpacing: -0.4 }}>Proviso</div>
+          <div style={{ display: "flex", fontSize: 34, fontWeight: 600, letterSpacing: -0.4 }}>Treuhand</div>
         </div>
         <div style={{ display: "flex", flex: 1, gap: 48, alignItems: "center", paddingBottom: 12 }}>
           <div style={{ display: "flex", flexDirection: "column", width: 448 }}>

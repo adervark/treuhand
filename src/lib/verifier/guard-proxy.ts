@@ -61,7 +61,7 @@ export async function startGuardProxy(): Promise<GuardProxy> {
       target = new URL(req.url ?? "");
       if (target.protocol !== "http:") throw new Error("not an absolute http URL");
     } catch {
-      res.writeHead(400, { "content-type": "text/plain" }).end("Proviso verifier proxy: bad request");
+      res.writeHead(400, { "content-type": "text/plain" }).end("Treuhand verifier proxy: bad request");
       return;
     }
     const host = target.hostname.replace(/^\[|\]$/g, "");
@@ -90,7 +90,7 @@ export async function startGuardProxy(): Promise<GuardProxy> {
         upstream.on("error", (error) => {
           log.push({ target: target.href, host, ...describeFailure(error) });
           if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" });
-          res.end("Proviso verifier proxy: upstream error");
+          res.end("Treuhand verifier proxy: upstream error");
         });
         req.pipe(upstream);
       },
@@ -102,7 +102,7 @@ export async function startGuardProxy(): Promise<GuardProxy> {
             "content-type": "text/plain",
             "x-clause-proxy": failure.outcome,
           })
-          .end(`Proviso verifier proxy refused this request: ${failure.reason}`);
+          .end(`Treuhand verifier proxy refused this request: ${failure.reason}`);
       },
     );
   });

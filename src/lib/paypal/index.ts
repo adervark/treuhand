@@ -684,7 +684,7 @@ export async function payout(input: PayoutInput): Promise<PayoutResult> {
       body: {
         sender_batch_header: {
           sender_batch_id: key,
-          email_subject: "You have a payout from Proviso",
+          email_subject: "You have a payout from Treuhand",
         },
         items: [
           {

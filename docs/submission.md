@@ -6,7 +6,9 @@ Ready to paste into the Devpost form. Every statement is true of the code and th
 
 ## Project name
 
-Proviso
+Treuhand
+
+(The name is German: *Treuhand*, "faithful hand", is the word for holding something on someone else's behalf and handing it over only as agreed. One sentence on this can go at the top of "Inspiration" if wanted.)
 
 ## Tagline (elevator pitch)
 
@@ -28,7 +30,7 @@ An AI can open a website or read a pull request, so it could be the neutral part
 
 ### What it does
 
-Proviso is conditional payment on ordinary PayPal rails, with an accountable AI verifier deciding the condition.
+Treuhand is conditional payment on ordinary PayPal rails, with an accountable AI verifier deciding the condition.
 
 1. **Draft.** The payer describes the deal in plain English: "Pay $20 for a one-page website, due in 3 days. It must load at a public URL, work at phone width without scrolling sideways, and explain that the domain is for use in documentation examples." An AI drafter turns it into machine-checkable tests. A condition no machine can decide, such as "look professional", is refused, with a checkable rewrite where one means what the payer asked, or "No checkable version" and one click to remove it.
 2. **Sign.** Payer and worker edit and sign the same tests. Any edit clears both signatures; once both sign, the terms are fixed and fingerprinted (SHA-256).
@@ -80,10 +82,10 @@ We built it with Claude Code agents working in parallel lanes (money, AI, verifi
 - A signed receipt proves that the record was not changed after it was signed, not that the verifier was honest. Saying exactly which of those it proves matters.
 - A screenshot is harder to fake than the DOM. A page's own scripts can feed false text to other scripts, but the screenshot shows what a visitor sees.
 - PayPal's details matter for holding money: authorizations are valid for 29 days with a 3-day honour period; sandbox authorizations never expire; capturing an `AUTHORIZE` order goes through the authorization, not the order; Payouts use `currency` where Orders use `currency_code`.
-- PayPal's Acceptable Use Policy lists escrow services among activities that need pre-approval, so we describe and build Proviso as conditional payment held by an ordinary authorization, and a live launch would start with asking PayPal.
+- PayPal's Acceptable Use Policy lists escrow services among activities that need pre-approval, so we describe and build Treuhand as conditional payment held by an ordinary authorization, and a live launch would start with asking PayPal.
 - Telling people plainly what the AI interpreted ("'works on phones' is checked as no sideways scrolling at 375 px") does more for trust than a confident answer.
 
-### What's next for Proviso
+### What's next for Treuhand
 
 - Run the full money path on US sandbox accounts (`docs/runbook.md`): approve, authorize, capture, payout, void, refund, and a live webhook.
 - Ask PayPal how a service like this is classified under its Acceptable Use Policy before any live launch.
@@ -102,9 +104,9 @@ next.js, react, typescript, tailwind-css, sqlite, better-sqlite3, playwright, ch
 
 ## PayPal and AI tools used (required statement)
 
-**PayPal.** Proviso uses PayPal for checkout, authorize, capture, void, payouts, refunds and webhooks, all against the sandbox, through direct REST calls with an idempotency key on every money movement. The **JavaScript SDK v6** renders the Fund button and runs the payer's approval. The **Orders v2 API** creates each contract's order with `intent: AUTHORIZE` for exactly the agreed amount and authorizes it after approval, so the payer's money is held, not charged. The **Payments v2 API** captures that authorization when every test passes or a split is agreed, voids it when the deadline passes without a pass, and refunds the payer's share of an agreed split. The **Payouts API** sends the worker's money to their email address, and the contract is marked paid only when PayPal reports the payout item `SUCCESS`. A **webhook** handler verifies each event with PayPal's verify-webhook-signature API and reconciles it idempotently, as a secondary confirmation only; no webhook has been configured or received. Proviso does not use the PayPal Agent Toolkit, because it cannot authorize, capture an authorization, void or pay out. Run against the real sandbox: token, order creation (read back as `AUTHORIZE` with the right amount), the v6 button opening PayPal's checkout window, and payouts from the command line. Implemented and unit-tested but not yet run against the real sandbox: buyer approval, authorize, capture, void and refund. *(update if the runbook is run)*
+**PayPal.** Treuhand uses PayPal for checkout, authorize, capture, void, payouts, refunds and webhooks, all against the sandbox, through direct REST calls with an idempotency key on every money movement. The **JavaScript SDK v6** renders the Fund button and runs the payer's approval. The **Orders v2 API** creates each contract's order with `intent: AUTHORIZE` for exactly the agreed amount and authorizes it after approval, so the payer's money is held, not charged. The **Payments v2 API** captures that authorization when every test passes or a split is agreed, voids it when the deadline passes without a pass, and refunds the payer's share of an agreed split. The **Payouts API** sends the worker's money to their email address, and the contract is marked paid only when PayPal reports the payout item `SUCCESS`. A **webhook** handler verifies each event with PayPal's verify-webhook-signature API and reconciles it idempotently, as a secondary confirmation only; no webhook has been configured or received. Treuhand does not use the PayPal Agent Toolkit, because it cannot authorize, capture an authorization, void or pay out. Run against the real sandbox: token, order creation (read back as `AUTHORIZE` with the right amount), the v6 button opening PayPal's checkout window, and payouts from the command line. Implemented and unit-tested but not yet run against the real sandbox: buyer approval, authorize, capture, void and refund. *(update if the runbook is run)*
 
-**AI.** One model, DeepSeek `deepseek-flash` (DeepSeek-V4.1-Flash, text and images), called through DeepSeek's OpenAI-compatible API with the `openai` npm package, plays three roles. The **drafter** turns a plain-English deal into machine-checkable tests, or refuses vague conditions with a checkable rewrite. The **reviewer panel** of three differently briefed reviewers answers one agreed criterion about a submitted web page from its screenshots and visible text, treating the page as untrusted data; the check passes or fails only if all three agree with confidence of at least 0.8, and otherwise abstains. Together with checks decided by code (GitHub's API and a Playwright-driven Chromium), its verdict decides whether PayPal pays, and every run is recorded in an Ed25519-signed receipt. The **mediator** reads the contract, the evidence and both parties' arguments in a dispute and proposes a split, which PayPal settles once both accept. Every reply is JSON validated with zod. AI agents use Proviso through its own MCP server (official MCP TypeScript SDK).
+**AI.** One model, DeepSeek `deepseek-flash` (DeepSeek-V4.1-Flash, text and images), called through DeepSeek's OpenAI-compatible API with the `openai` npm package, plays three roles. The **drafter** turns a plain-English deal into machine-checkable tests, or refuses vague conditions with a checkable rewrite. The **reviewer panel** of three differently briefed reviewers answers one agreed criterion about a submitted web page from its screenshots and visible text, treating the page as untrusted data; the check passes or fails only if all three agree with confidence of at least 0.8, and otherwise abstains. Together with checks decided by code (GitHub's API and a Playwright-driven Chromium), its verdict decides whether PayPal pays, and every run is recorded in an Ed25519-signed receipt. The **mediator** reads the contract, the evidence and both parties' arguments in a dispute and proposes a split, which PayPal settles once both accept. Every reply is JSON validated with zod. AI agents use Treuhand through its own MCP server (official MCP TypeScript SDK).
 
 ---
 

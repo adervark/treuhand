@@ -54,7 +54,7 @@ beforeEach(() => {
   installPayPalFakes();
 });
 
-const ENDPOINT = "http://proviso.test/api/mcp";
+const ENDPOINT = "http://treuhand.test/api/mcp";
 
 /** Calls the route handler for the request's method, as Next.js would. */
 function routeFetch(url: string | URL, init?: RequestInit): Promise<Response> {
@@ -165,7 +165,7 @@ describe("authentication", () => {
     const { token, row } = createAgentToken({ role: "payer" });
     revokeAgentToken(row.id);
     expect((await initialize({ Authorization: `Bearer ${token}` })).status).toBe(401);
-    expect((await initialize({ Authorization: "Bearer proviso_unknown" })).status).toBe(401);
+    expect((await initialize({ Authorization: "Bearer treuhand_unknown" })).status).toBe(401);
     await expect(connect(token)).rejects.toThrow();
   });
 });
@@ -243,7 +243,7 @@ describe("a contract from draft to receipt", () => {
     expect(draft.kind).toBe("draft");
     const created = await ok<{ contract: { id: string; state: string }; page_url: string }>(buyer, "create_contract", draft.contract);
     const id = created.contract.id;
-    expect(created.page_url).toBe(`http://proviso.test/contracts/${id}`);
+    expect(created.page_url).toBe(`http://treuhand.test/contracts/${id}`);
 
     await ok(buyer, "sign_contract", { contract_id: id });
     const signed = await ok<{ contract: { state: string } }>(seller, "sign_contract", { contract_id: id });
@@ -314,7 +314,7 @@ describe("a contract from draft to receipt", () => {
       { reviewer: "skeptic", vote: "pass", criterion_met: true, confidence: 0.85, reasoning: "Offer is stated." },
     ]);
     expect(verdict.checks[1].evidence_links).toEqual([
-      `http://proviso.test/api/evidence/${submitted.submission_id}/desktop-1.jpg`,
+      `http://treuhand.test/api/evidence/${submitted.submission_id}/desktop-1.jpg`,
     ]);
     expect(verdict.receipt).not.toBeNull();
 

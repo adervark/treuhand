@@ -19,10 +19,10 @@ export function splitAgreed(dispute: Dispute | null): boolean {
 const EXPIRES_AT_DEADLINE = new Set(["FUNDED", "FAILED", "VERIFYING", "DISPUTED", "ESCALATED"]);
 
 const PASS_STALLED: Record<string, string> = {
-  capture: "Every test passed, but PayPal refused to capture the hold. Proviso tries again automatically.",
-  payout: "Every test passed and the hold was captured, but the payout has not reached the worker. Proviso keeps trying automatically.",
-  payout_status: "Every test passed and the payout was sent, but PayPal did not report its status. Proviso checks again automatically.",
-  refund: "PayPal could not deliver the payout, and the refund to the payer did not go through. Proviso tries again automatically.",
+  capture: "Every test passed, but PayPal refused to capture the hold. Treuhand tries again automatically.",
+  payout: "Every test passed and the hold was captured, but the payout has not reached the worker. Treuhand keeps trying automatically.",
+  payout_status: "Every test passed and the payout was sent, but PayPal did not report its status. Treuhand checks again automatically.",
+  refund: "PayPal could not deliver the payout, and the refund to the payer did not go through. Treuhand tries again automatically.",
 };
 
 /**
@@ -41,7 +41,7 @@ export function contractNotice(
   const failure = activity.last_failure;
   if (failure && SWEPT_ACTIONS.has(failure.action)) {
     if (failure.action === "settle_pass") {
-      return { tone: "disputed", text: PASS_STALLED[failure.step] ?? "Every test passed, but paying the worker did not start. Proviso tries again automatically." };
+      return { tone: "disputed", text: PASS_STALLED[failure.step] ?? "Every test passed, but paying the worker did not start. Treuhand tries again automatically." };
     }
     if (failure.action === "settle_split") {
       return { tone: "disputed", text: "Both accepted the split, but PayPal did not complete the settlement. It is being retried automatically." };
@@ -50,8 +50,8 @@ export function contractNotice(
       tone: "disputed",
       text:
         failure.step === "void"
-          ? "The deadline passed, but PayPal did not release the hold. Proviso tries again automatically."
-          : "The deadline passed, but returning the money to the payer did not go through. Proviso tries again automatically.",
+          ? "The deadline passed, but PayPal did not release the hold. Treuhand tries again automatically."
+          : "The deadline passed, but returning the money to the payer did not go through. Treuhand tries again automatically.",
     };
   }
   if (contract.state === "DISPUTED" && splitAgreed(dispute)) {
@@ -151,8 +151,8 @@ export function moneyPosition(
           status === "UNCLAIMED"
             ? `PayPal is holding the ${sent} payout for ${contract.worker_email}, which has no PayPal account yet. It lands when they claim it.`
             : status === "ONHOLD"
-              ? `PayPal put the ${sent} payout to ${contract.worker_email} on hold for review. Proviso waits for it and does not send it again.`
-              : `PayPal reported the ${sent} payout to ${contract.worker_email} as ${status} and returned the money. Proviso sends it again, up to 3 attempts in all, then refunds the payer.`,
+              ? `PayPal put the ${sent} payout to ${contract.worker_email} on hold for review. Treuhand waits for it and does not send it again.`
+              : `PayPal reported the ${sent} payout to ${contract.worker_email} as ${status} and returned the money. Treuhand sends it again, up to 3 attempts in all, then refunds the payer.`,
         problem: status,
       };
     }
@@ -189,10 +189,10 @@ export function moneyPosition(
       headline: `${fmt(held)} held by PayPal`,
       detail: captured
         ? SWEPT_ACTIONS.has(failure?.action ?? "")
-          ? "Captured from the payer, but the next PayPal step did not go through. Proviso tries again automatically."
+          ? "Captured from the payer, but the next PayPal step did not go through. Treuhand tries again automatically."
           : "Captured from the payer. The payout to the worker is on its way."
         : failure?.action === "settle_split"
-          ? "Reserved on the payer's account, not yet charged. Both accepted the split; settling it with PayPal did not go through yet, and Proviso tries again automatically."
+          ? "Reserved on the payer's account, not yet charged. Both accepted the split; settling it with PayPal did not go through yet, and Treuhand tries again automatically."
           : contract.state === "DISPUTED" || contract.state === "ESCALATED"
           ? "Reserved on the payer's account, not yet charged. How the dispute ends decides whether PayPal captures it or releases it to the payer."
           : "Reserved on the payer's account, not yet charged. PayPal captures it and pays the worker only when every test passes.",

@@ -1,6 +1,6 @@
-# Proviso design language
+# Treuhand design language
 
-Proviso is a contract that pays itself. Two people agree a deal whose conditions
+Treuhand is a contract that pays itself. Two people agree a deal whose conditions
 are tests a machine can run. PayPal holds the payer's money. An AI verifier
 opens the delivered work, runs every test and records what it saw. When every
 test passes, PayPal pays the worker. No one approves the payment by hand.
@@ -33,7 +33,7 @@ each condition is a test with a verdict.
 
 ### 1.2 Money is exact and quiet
 
-Money in Proviso is a fact about where a specific amount sits right now, so it
+Money in Treuhand is a fact about where a specific amount sits right now, so it
 is set the way a terminal sets a price: plainly.
 
 - Every amount is set in the reading face with tabular figures, full cents and
@@ -77,7 +77,7 @@ A verdict that moves money is worthless without the evidence behind it.
 
 ### 1.5 Colour means something, or it is not there
 
-A terminal is grey until something happens. Proviso is the same.
+A terminal is grey until something happens. Treuhand is the same.
 
 - Surfaces are neutral greys in four steps (section 3). There are no gradients,
   glows, shadows (dialogs excepted), illustrations or tinted cards.
@@ -97,7 +97,7 @@ The interface is styled after LSEG Workspace (formerly Refinitiv Eikon), the
 market-data terminal, because a contract whose money moves on facts should look
 like an instrument that professionals trust with money, not like a landing
 page. We took the visual idiom only: no LSEG logo, name, typeface, layout of a
-specific app, or brand colour value appears in Proviso.
+specific app, or brand colour value appears in Treuhand.
 
 ### 2.1 What LSEG Workspace looks like
 
@@ -140,7 +140,7 @@ change LSEG Workspace to light theme" (manchester-uk.libanswers.com, faq
 
 ### 2.2 Borrowed
 
-| From Workspace | In Proviso |
+| From Workspace | In Treuhand |
 | --- | --- |
 | Neutral greys in steps: chrome, panel, strip, header bar | `--paper`, `--surface`, `--surface-2`, `--head` (section 3.2) |
 | Flat grey header bar with an uppercase title on every panel | `.panel-title` on `--head`; the only uppercase labels in the product |
@@ -154,12 +154,12 @@ change LSEG Workspace to light theme" (manchester-uk.libanswers.com, faq
 
 ### 2.3 Refused
 
-| In Workspace | Why Proviso does not take it |
+| In Workspace | Why Treuhand does not take it |
 | --- | --- |
-| The LSEG name, logo, typeface and exact brand values | Idiom, not brand. Proviso's blue, greys and type are its own. |
-| 11 px body text and walls of tables | Proviso is read by two people about one contract, on a projector in the demo; body is 13 px and no table is wider than it needs to be. |
-| Red and green as the only signal | Every Proviso colour travels with a word or glyph (section 3.1). |
-| Multi-window docking, bookmark bars, function codes | Proviso has three pages; the chrome is one bar. |
+| The LSEG name, logo, typeface and exact brand values | Idiom, not brand. Treuhand's blue, greys and type are its own. |
+| 11 px body text and walls of tables | Treuhand is read by two people about one contract, on a projector in the demo; body is 13 px and no table is wider than it needs to be. |
+| Red and green as the only signal | Every Treuhand colour travels with a word or glyph (section 3.1). |
+| Multi-window docking, bookmark bars, function codes | Treuhand has three pages; the chrome is one bar. |
 | Candlesticks and dense technical charts | One step chart of money over time and the money-flow diagram. |
 | The solid blue header bar of the mobile app | Blue stays the accent; it is never a surface. |
 
@@ -304,7 +304,7 @@ except the panel title.
 
 ## 5. Density and grid
 
-Proviso is read by two people who care a great deal about one contract. Density
+Treuhand is read by two people who care a great deal about one contract. Density
 is a courtesy: the whole state of a contract fits in the first screen.
 
 - Base unit 4 px. Panel header bars 28 px; panel bodies 12 to 16 px padding.
@@ -385,7 +385,7 @@ of room, and its type grows with the room (section 7.3).
 
 ## 6. Components
 
-**Top bar.** One `--paper` bar: the mark and the word "Proviso" in 15 px bold
+**Top bar.** One `--paper` bar: the mark and the word "Treuhand" in 15 px bold
 (section 9), the three pages as uppercase links (the active one in `--ink` with a 2 px
 accent underline), then "Viewing as" with the payer/worker switch and the theme
 switch. A 2 px line in the viewer's role colour runs along its top edge.
@@ -533,7 +533,7 @@ a solid red tag.
 
 **Tape.** The audit trail, newest first: time (tabular, 24-hour, seconds),
 actor (role colour for people, cyan for the verifier and the mediator, neutral
-ink for PayPal and Proviso), what happened with a tone square in the colour of
+ink for PayPal and Treuhand), what happened with a tone square in the colour of
 where the money or the contract went, and references in mono. Repeated
 failures fold into one line with a count.
 
@@ -558,7 +558,7 @@ bind a person (sign, submit) are filled in that person's role colour. Accepting
 a split that pays out is `--paid`. Destructive or contesting actions are
 outlined. Pressed, filled buttons darken (brightness 0.9) and outlined ones
 take the next grey step, so a click registers on screen. The PayPal button is
-PayPal's own and is never restyled; Proviso only frames it.
+PayPal's own and is never restyled; Treuhand only frames it.
 
 **Fields.** `--inset` ground, `--field` edge, 2 px radius, 13 px text; the edge
 turns `--accent` on focus. URLs, selectors and repository names are typed in
@@ -591,10 +591,10 @@ states the current totals.
 
 ## 7. The money flow (signature element)
 
-Proviso's promise is about money moving by itself, so the one drawing every
+Treuhand's promise is about money moving by itself, so the one drawing every
 judge and every user should remember is the picture of where the money is and
 where it can go. It appears twice: for one contract under its track, and summed
-over every contract at the top of the ledger. Both are drawn by Proviso in SVG
+over every contract at the top of the ledger. Both are drawn by Treuhand in SVG
 and HTML; no charting library is involved.
 
 ### 7.1 Places (nodes)
@@ -607,12 +607,12 @@ can read any other at a glance:
 | --- | --- | --- |
 | Payer's PayPal | The payer's account, before funding | `--ink` (no money colour: nothing has happened yet) |
 | PayPal hold | The authorization: reserved on the payer's account, not charged | `--held` |
-| Captured | Proviso's PayPal balance after capture, waiting to pay out | `--held` |
+| Captured | Treuhand's PayPal balance after capture, waiting to pay out | `--held` |
 | Worker's PayPal | Where a pass sends it | `--paid` |
 | Back to payer | Released holds and refunds | `--returned` |
 
 A place box is a flat, square-cornered box. It carries its mark (the role
-letter for people, a lock for the hold, a `C` letter mark for Proviso's balance, ↩ for the
+letter for people, a lock for the hold, a `C` letter mark for Treuhand's balance, ↩ for the
 return), its title in semibold sentence case, who it belongs to, the amount,
 and one or two words of state. A place is in one of five states,
 each with its own frame so the state never depends on colour:
@@ -769,16 +769,16 @@ not animated.
 
 ## 9. Iconography
 
-Line icons on a 24 px grid, 1.75 px stroke, round caps, drawn for Proviso. Icons
+Line icons on a 24 px grid, 1.75 px stroke, round caps, drawn for Treuhand. Icons
 are decorative unless they stand alone, in which case they carry a title. The
 outcome glyphs are a closed set that always travels with its word: ✓ pass,
 ✕ fail, ? inconclusive, dashed circle queued, scan frame checking, shield
 manipulation, lock held, scale disputed. Letter marks identify parties in a
-2 px-radius square: `P` payer, `W` worker, `C` Proviso's balance (C for captured, since `P` is the payer).
+2 px-radius square: `P` payer, `W` worker, `C` Treuhand's balance (C for captured, since `P` is the payer).
 
 The mark (`brand.tsx`) is the product's own vocabulary: a 3 px-radius
 `--accent-fill` square with a square-capped `--accent-on` check, the shape a met
-condition takes on the track. It sits before the word "Proviso" in the top bar
+condition takes on the track. It sits before the word "Treuhand" in the top bar
 and is the favicon (`src/app/icon.svg`, `favicon.ico`) and the app icon
 (`apple-icon.tsx`). The Open Graph image (`opengraph-image.tsx`, 1200 × 630,
 built once at build) is the dark theme: the mark and name, the headline and the
@@ -796,7 +796,7 @@ Plex Sans (OFL, `src/assets/fonts`).
   written. The AI "proposes"; people "decide", "sign" and "contest".
 - No slogans in the product: a sentence either states a fact or tells the
   viewer what will happen next.
-- Errors show the API's own words and what will happen next ("Proviso tries again
+- Errors show the API's own words and what will happen next ("Treuhand tries again
   automatically"). No "Oops", no exclamation marks, no emoji.
 - Times: relative for "when" ("in 22 hours"), absolute on the tape and on hover.
   Deadlines show both.

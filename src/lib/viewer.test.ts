@@ -1,6 +1,6 @@
 /**
  * The acting party from the view-as cookie, and the stale-tab guard (DEF-20):
- * a write that names, in X-Proviso-Role, a role other than the cookie's is
+ * a write that names, in X-Treuhand-Role, a role other than the cookie's is
  * refused, because another tab of the same browser switched the role.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";

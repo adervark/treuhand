@@ -1,6 +1,8 @@
-# Proviso: contracts that pay themselves
+# Treuhand: contracts that pay themselves
 
-Proviso is a web app for two parties who agree a small job and a price, such as a freelancer and a client, or a maintainer and whoever fixes an issue. The payer describes the deal in plain English and an AI drafts it into a contract whose conditions are machine-checkable tests; anything too vague to test is refused. Both parties sign. The payer's money is held with a PayPal authorization on their own account, not charged. When the worker submits a link to the work (a live website or a GitHub pull request), code checks every fact it can and a panel of three AI reviewers judges the rest; if the reviewers do not all agree, no money moves and the check goes to a re-run or a person. Every finished run gets an Ed25519-signed receipt that anyone can check with a script. If every test passes, PayPal captures the hold and pays the worker by Payout to their email address. If the deadline passes first, the hold is released and the payer is never charged. If the parties disagree, an AI mediator proposes a split that both must accept. Nobody presses "approve payment".
+Treuhand is a web app for two parties who agree a small job and a price, such as a freelancer and a client, or a maintainer and whoever fixes an issue. The payer describes the deal in plain English and an AI drafts it into a contract whose conditions are machine-checkable tests; anything too vague to test is refused. Both parties sign. The payer's money is held with a PayPal authorization on their own account, not charged. When the worker submits a link to the work (a live website or a GitHub pull request), code checks every fact it can and a panel of three AI reviewers judges the rest; if the reviewers do not all agree, no money moves and the check goes to a re-run or a person. Every finished run gets an Ed25519-signed receipt that anyone can check with a script. If every test passes, PayPal captures the hold and pays the worker by Payout to their email address. If the deadline passes first, the hold is released and the payer is never charged. If the parties disagree, an AI mediator proposes a split that both must accept. Nobody presses "approve payment".
+
+The name is German: *Treuhand*, "faithful hand", is the word for holding something on someone else's behalf and handing it over only as agreed.
 
 AI agents can be the customers too: an MCP server with per-party tokens lets a buyer's agent and a worker's agent run a contract, while funding always stays with a person in PayPal's own window.
 
@@ -8,7 +10,7 @@ Entry for the PayPal AI Hackathon. Everything runs against the PayPal sandbox; n
 
 Hosted demo: none at the time of writing. Run it locally ([Quick start](#quick-start)) or deploy your own copy with the included `Dockerfile` and `render.yaml` ([Deploying](#deploying)).
 
-Proviso was called Clause while it was built. The environment variables (`CLAUSE_*`), the database file (`data/clause.db`) and the view-as cookie (`clause_view_as`) keep that name.
+Treuhand was called Clause while it was built. The environment variables (`CLAUSE_*`), the database file (`data/clause.db`) and the view-as cookie (`clause_view_as`) keep that name.
 
 ## How it works
 
@@ -57,7 +59,7 @@ The three reviewers are the same model with different instructions, so they can 
 
 ### Signed receipts
 
-When a verification run finishes, the server issues a receipt (`src/lib/verifier/receipt.ts`, rules in `receipt-core.ts`): the contract and submission ids, the submitted URL, the SHA-256 of the terms both parties signed, the run's outcome, and for each check its outcome, confidence, and the SHA-256 of its reasoning, of its evidence JSON and of each screenshot file, plus the verifier's name, version and model. The receipt's SHA-256 is signed with Ed25519 (Node's built-in crypto). The public key is served at `GET /api/verifier/public-key`; receipts at `GET /api/contracts/<id>/receipts`. The idea of binding a verification result to the payment decision is close to the verification proofs in VCAP (draft-stone-vcap, an individual Internet-Draft on verified commerce for agents); Proviso does not implement that draft's formats.
+When a verification run finishes, the server issues a receipt (`src/lib/verifier/receipt.ts`, rules in `receipt-core.ts`): the contract and submission ids, the submitted URL, the SHA-256 of the terms both parties signed, the run's outcome, and for each check its outcome, confidence, and the SHA-256 of its reasoning, of its evidence JSON and of each screenshot file, plus the verifier's name, version and model. The receipt's SHA-256 is signed with Ed25519 (Node's built-in crypto). The public key is served at `GET /api/verifier/public-key`; receipts at `GET /api/contracts/<id>/receipts`. The idea of binding a verification result to the payment decision is close to the verification proofs in VCAP (draft-stone-vcap, an individual Internet-Draft on verified commerce for agents); Treuhand does not implement that draft's formats.
 
 Check a contract's receipts against a running app (no `.env` needed; exits 0 when every receipt holds, 1 when any check fails, 2 on a usage or fetch error). The contract page's receipt panel shows this command with the right URL:
 
@@ -102,7 +104,7 @@ These are small fixed suites, not a guarantee.
 
 All PayPal calls go to the sandbox (`https://api-m.sandbox.paypal.com`) as direct REST calls in `src/lib/paypal/index.ts`. Every call that moves money sends a deterministic `PayPal-Request-Id`, so a retry cannot repeat the action. Orders and Payments return PayPal's first result. Payouts do not: PayPal refuses a repeated `sender_batch_id` with HTTP 400 and a link to the existing batch, and `payout` reads that batch back, checks its amount and receiver, and returns it as the payout sent.
 
-| PayPal capability | What it does in Proviso | Where |
+| PayPal capability | What it does in Treuhand | Where |
 |---|---|---|
 | Checkout, JS SDK v6 | The Fund button. Loads `https://www.sandbox.paypal.com/web-sdk/v6/core`, creates a one-time payment session, and hands it an order the server created. | `src/components/contract/paypal-button.tsx` |
 | Orders v2, `intent: AUTHORIZE` | `POST /v2/checkout/orders` for exactly the contract's amount, tagged with the contract id; after the payer approves, `POST /v2/checkout/orders/{id}/authorize`. A hold for the wrong amount, currency or contract is voided and refused. | `createAuthorizedOrder`, `authorizeOrder` |
@@ -112,7 +114,7 @@ All PayPal calls go to the sandbox (`https://api-m.sandbox.paypal.com`) as direc
 | Refunds | `POST /v2/payments/captures/{id}/refund` returns the payer's share of an agreed split, the worker's share when all three payout attempts came back, or the whole capture when a void finds the hold already captured (a capture whose response was lost). | `refundCapture` |
 | Webhooks | A handler at `POST /api/webhooks/paypal` verifies each event with `POST /v1/notifications/verify-webhook-signature` and reconciles nine event types idempotently. It is a secondary confirmation only: the server records every PayPal result directly, and nothing depends on a webhook arriving. Without `PAYPAL_WEBHOOK_ID` it answers 503. No webhook has been configured or received. | `src/app/api/webhooks/paypal/route.ts`, `src/lib/paypal/webhook.ts` |
 
-Proviso does not use PayPal's Agent Toolkit. Its tools cannot authorize, capture an authorization, void or send payouts, and its `create_order` is fixed to intent `CAPTURE` (details in `docs/paypal-notes.md`, section 6), so every PayPal call here is direct REST.
+Treuhand does not use PayPal's Agent Toolkit. Its tools cannot authorize, capture an authorization, void or send payouts, and its `create_order` is fixed to intent `CAPTURE` (details in `docs/paypal-notes.md`, section 6), so every PayPal call here is direct REST.
 
 ## What uses AI
 
@@ -126,10 +128,10 @@ One model for every role: DeepSeek `deepseek-flash` (DeepSeek-V4.1-Flash, which 
 
 ## For agents
 
-AI agents can be Proviso's customers. A buyer's agent drafts and creates a contract; a worker's agent reads the tests, submits the work and reads the verdict with its evidence, the reviewer panel's votes and the signed receipt; either one can follow the money in the ledger or check a receipt.
+AI agents can be Treuhand's customers. A buyer's agent drafts and creates a contract; a worker's agent reads the tests, submits the work and reads the verdict with its evidence, the reviewer panel's votes and the signed receipt; either one can follow the money in the ledger or check a receipt.
 
-- **Where.** The MCP server is at `/api/mcp` (Streamable HTTP, stateless). For clients that launch a local process, `scripts/mcp-server.ts` is a stdio server that relays every call to a running app's `/api/mcp` (`PROVISO_URL`, `PROVISO_TOKEN`). The same token works on the plain HTTP API, described in [`docs/openapi.yaml`](docs/openapi.yaml) (OpenAPI 3.1, also served at `/api/openapi`).
-- **Tokens.** `pnpm agent:token create --role payer|worker [--allow-sign] [--read-only] [--label <text>]` prints a token once (`proviso_...`; only its SHA-256 is stored); `list` and `revoke <id>` manage them. A token acts as one party, under the web app's role rules.
+- **Where.** The MCP server is at `/api/mcp` (Streamable HTTP, stateless). For clients that launch a local process, `scripts/mcp-server.ts` is a stdio server that relays every call to a running app's `/api/mcp` (`TREUHAND_URL`, `TREUHAND_TOKEN`). The same token works on the plain HTTP API, described in [`docs/openapi.yaml`](docs/openapi.yaml) (OpenAPI 3.1, also served at `/api/openapi`).
+- **Tokens.** `pnpm agent:token create --role payer|worker [--allow-sign] [--read-only] [--label <text>]` prints a token once (`treuhand_...`; only its SHA-256 is stored); `list` and `revoke <id>` manage them. A token acts as one party, under the web app's role rules.
 - **Scopes.** `read` (always), `write` (act as the party: draft and create as payer, submit as worker, re-run, dispute; dropped by `--read-only`), and `sign` (only with `--allow-sign`). No token can fund: `/fund/create-order` and `/fund/authorize` answer 403 to every token, and the tool `get_funding_instructions` tells the agent what to ask the payer to do in PayPal's window.
 - **Tools.** 16: `whoami`, `list_contracts`, `get_contract`, `draft_contract`, `create_contract`, `sign_contract`, `get_funding_instructions`, `submit_work`, `get_verification`, `rerun_verification`, `open_dispute`, `respond_to_dispute`, `accept_proposal`, `decline_proposal`, `get_ledger`, `check_receipt`.
 
@@ -186,7 +188,7 @@ In developer.paypal.com, switch to Sandbox, then:
 
 Why US: with an India-region sandbox business account, `POST /v1/payments/payouts` returned 403 `PAYOUT_NOT_AVAILABLE` and card processing was not enabled. Token and order creation worked; payouts did not.
 
-Proviso has no sign-up. The header's "Viewing as Payer / Worker" switch sets a cookie, and the two seeded identities are the only parties.
+Treuhand has no sign-up. The header's "Viewing as Payer / Worker" switch sets a cookie, and the two seeded identities are the only parties.
 
 ## Try it in five minutes
 
@@ -321,7 +323,7 @@ The `Dockerfile` builds on `mcr.microsoft.com/playwright:v1.65.0-noble`, which s
 - **Demo identities, not accounts.** There is no sign-up or authentication: two seeded identities and a cookie switch. Agents authenticate with tokens, but a token maps to one of the same two identities.
 - **The three reviewers share one model.** They are the same model with different instructions, so they can share a blind spot and agree on the same mistake. The confidence threshold, the evidence trail, the optional contest window and the dispute path are the other mitigations, not a guarantee.
 - **A receipt proves the record, not the verifier's honesty.** It shows that a verdict, its evidence and the terms it was checked against were not changed after signing. It does not prove that the operator ran the verifier honestly: the signing key is held by whoever runs the server. Screenshots are hashed but stay on the server, so checking them needs the app (or its files).
-- **PayPal's approval for a real launch.** PayPal's Acceptable Use Policy lists escrow services among activities that need PayPal's pre-approval, and its User Agreement says PayPal does not act as an escrow agent. Proviso holds money only as an ordinary authorization on the payer's own PayPal account, captured or voided by rules both parties signed; whether a live service built this way needs that approval is PayPal's decision, and it would be asked before launch. The sandbox does not enforce this. PayPal's marketplace "delayed disbursement" holds funds for at most 28 days and needs the worker onboarded as a seller, which breaks "the worker only needs an email address".
+- **PayPal's approval for a real launch.** PayPal's Acceptable Use Policy lists escrow services among activities that need PayPal's pre-approval, and its User Agreement says PayPal does not act as an escrow agent. Treuhand holds money only as an ordinary authorization on the payer's own PayPal account, captured or voided by rules both parties signed; whether a live service built this way needs that approval is PayPal's decision, and it would be asked before launch. The sandbox does not enforce this. PayPal's marketplace "delayed disbursement" holds funds for at most 28 days and needs the worker onboarded as a seller, which breaks "the worker only needs an email address".
 - **A page can show the verifier something different from what people see.** The worker controls the server and can detect the verifier (by address, browser fingerprint or timing) and serve it a page that passes while people get something else, or change the page after it passes. The evidence screenshots record what the verifier saw, which helps in a dispute, but nothing prevents this.
 - **Only objectively checkable conditions.** Taste, quality and "is this what I meant" are refused by design. That limits which deals fit.
 - **Passing the tests is not the same as good work.** A page can meet "has a contact form" and still be useless. The payer approves the tests before funding, and some gaming will remain.

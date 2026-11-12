@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
-  title: Proviso API
+  title: Treuhand API
   version: 1.0.0
   summary: Conditional payments released by an AI verifier.
   description: |
-    Proviso holds a payer's money with a PayPal authorization and pays the worker
+    Treuhand holds a payer's money with a PayPal authorization and pays the worker
     through PayPal Payouts when an AI verifier proves the delivered work meets the
     conditions both parties signed. This is the JSON API the web app and AI agents
     use. It is written from the route handlers in `src/app/api/**`; `docs/api.md`
@@ -18,7 +18,7 @@ info:
     default `payer`); the demo has no other sign-in. A present but malformed,
     unknown or revoked bearer token is always refused with `401`, never
     ignored. Tokens are created with `scripts/agent-token.ts` (see
-    `docs/agents.md`). The web app's pages also send `X-Proviso-Role`, the
+    `docs/agents.md`). The web app's pages also send `X-Treuhand-Role`, the
     role a page was rendered for; it is ignored with an agent token.
 
     **Two steps stay with people.** Funding (`/fund/*`) is refused to every
@@ -38,7 +38,7 @@ info:
     identifier: MIT
 servers:
   - url: '{baseUrl}'
-    description: A running Proviso app
+    description: A running Treuhand app
     variables:
       baseUrl:
         default: http://localhost:3000
@@ -667,12 +667,12 @@ paths:
       operationId: mcp
       summary: The MCP server (Streamable HTTP, JSON-RPC 2.0)
       description: |
-        Proviso's tools for AI agents, served statelessly over MCP Streamable
+        Treuhand's tools for AI agents, served statelessly over MCP Streamable
         HTTP: 2026-07-28 clients on the per-request path, 2025-era clients on a
         stateless fallback. Use an MCP client, not hand-written requests; the
         tool list and a worked example are in `docs/agents.md`. Every request
         needs an agent token; without one the answer is `401` with
-        `WWW-Authenticate: Bearer realm="proviso"`. A tool failure is a tool
+        `WWW-Authenticate: Bearer realm="treuhand"`. A tool failure is a tool
         result with `isError: true` whose text is
         `{"error":{"code","message"},"http_status"}`, the same codes as this API.
       security:
@@ -725,7 +725,7 @@ components:
     agentToken:
       type: http
       scheme: bearer
-      bearerFormat: proviso_<43 base64url characters>
+      bearerFormat: treuhand_<43 base64url characters>
       description: |
         An agent token from `scripts/agent-token.ts create --role payer|worker
         [--allow-sign] [--read-only]`. It acts as its party. Scopes, listed per
@@ -748,7 +748,7 @@ components:
       description: The contract's id.
       schema: { type: string, minLength: 1 }
     PageRole:
-      name: X-Proviso-Role
+      name: X-Treuhand-Role
       in: header
       required: false
       description: |
@@ -796,7 +796,7 @@ components:
         (editing after DRAFT), `DEADLINE_PASSED`, `ORDER_MISMATCH`, `BUSY`
         (another action is running; retry shortly), `DISPUTE_STATE`,
         `IDENTITIES_MISSING` (run `pnpm db:seed`), or `ROLE_MISMATCH` (the
-        `X-Proviso-Role` header names another role than the cookie's; never
+        `X-Treuhand-Role` header names another role than the cookie's; never
         with an agent token).
       content:
         application/json:
@@ -1295,7 +1295,7 @@ components:
       type: object
       required: [schema, contract_id, submission_id, submitted_url, terms_sha256, outcome, verdicts, verifier, started_at, finished_at, issued_at]
       properties:
-        schema: { const: proviso.receipt/1 }
+        schema: { const: treuhand.receipt/1 }
         contract_id: { type: string }
         submission_id: { type: string }
         submitted_url: { type: string }

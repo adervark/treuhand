@@ -83,13 +83,13 @@ describe("issueReceipt", () => {
     const signed = await issueReceipt({ submissionId: submission.id, outcome: "inconclusive", verdicts, startedAt, finishedAt });
 
     expect(signed.receipt).toMatchObject({
-      schema: "proviso.receipt/1",
+      schema: "treuhand.receipt/1",
       contract_id: contract.id,
       submission_id: submission.id,
       submitted_url: submission.url,
       terms_sha256: getTermsHash(contract.id),
       outcome: "inconclusive",
-      verifier: { name: "proviso", version: expect.stringMatching(/^\d+\.\d+\.\d+/), model: "judge-model" },
+      verifier: { name: "treuhand", version: expect.stringMatching(/^\d+\.\d+\.\d+/), model: "judge-model" },
       started_at: "2026-11-12T10:00:00.000Z",
       finished_at: "2026-11-12T10:00:09.000Z",
     });

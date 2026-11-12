@@ -18,10 +18,10 @@ import { useMinWidth } from "../use-min-width";
 
 export const FLOW_KINDS: { kind: LedgerKind; label: string; tone: FlowTone; route: string }[] = [
   { kind: "AUTHORIZED", label: "Into PayPal holds", tone: "held", route: "Payers → hold" },
-  { kind: "CAPTURED", label: "Captured", tone: "held", route: "Hold → Proviso" },
-  { kind: "PAID_OUT", label: "Paid to workers", tone: "paid", route: "Proviso → workers" },
+  { kind: "CAPTURED", label: "Captured", tone: "held", route: "Hold → Treuhand" },
+  { kind: "PAID_OUT", label: "Paid to workers", tone: "paid", route: "Treuhand → workers" },
   { kind: "VOIDED", label: "Holds released", tone: "returned", route: "Hold → payers" },
-  { kind: "REFUNDED", label: "Refunded", tone: "returned", route: "Proviso → payers" },
+  { kind: "REFUNDED", label: "Refunded", tone: "returned", route: "Treuhand → payers" },
 ];
 
 type FlowTone = "held" | "paid" | "returned";
@@ -219,7 +219,7 @@ export function MoneyFlowSankey({
               </svg>
               <ColumnHead x={geo.x[0]} title="Payers" value={fmt(totals.flows.AUTHORIZED)} note="put into holds" />
               <ColumnHead x={geo.x[1]} title="PayPal holds" value={fmt(totals.flows.AUTHORIZED)} note={totals.inHolds > 0 ? `${fmt(totals.inHolds)} still held` : "all moved on"} tone="text-held" />
-              <ColumnHead x={geo.x[2]} title="Captured by Proviso" value={fmt(totals.flows.CAPTURED)} note={totals.inCapture > 0 ? `${fmt(totals.inCapture)} paying out` : "all moved on"} tone="text-held" />
+              <ColumnHead x={geo.x[2]} title="Captured by Treuhand" value={fmt(totals.flows.CAPTURED)} note={totals.inCapture > 0 ? `${fmt(totals.inCapture)} paying out` : "all moved on"} tone="text-held" />
               <TerminalLabel x={geo.x[3] + BAR + 8} y={geo.workers.y} h={Math.max(geo.workers.h, 30)} title="Paid to workers" value={fmt(totals.flows.PAID_OUT)} tone="text-paid" />
               <TerminalLabel
                 x={geo.x[3] + BAR + 8}

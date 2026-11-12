@@ -100,13 +100,13 @@ describe("a capture PayPal refused (DEF-10)", () => {
   it("is said as a failure that is retried, not as the worker being paid", () => {
     expect(contractNotice(passed, NOW)).toEqual({
       tone: "disputed",
-      text: "Every test passed, but PayPal refused to capture the hold. Proviso tries again automatically.",
+      text: "Every test passed, but PayPal refused to capture the hold. Treuhand tries again automatically.",
     });
   });
 
   it("draws the capture as refused, with nothing moving", () => {
     const flow = moneyFlow(passed);
-    expect(flow.legs.capture).toMatchObject({ status: "failed", verb: "Capture refused", note: "Proviso tries again automatically" });
+    expect(flow.legs.capture).toMatchObject({ status: "failed", verb: "Capture refused", note: "Treuhand tries again automatically" });
     expect(Object.values(flow.legs).filter((l) => l.status === "moving")).toEqual([]);
     expect(flow.now).toEqual({ places: ["hold"], leg: null });
   });
@@ -125,14 +125,14 @@ describe("a payout that failed after the capture (DEF-10)", () => {
   });
 
   it("says the payout has not reached the worker and is retried", () => {
-    expect(contractNotice(captured, NOW)?.text).toMatch(/payout has not reached the worker\. Proviso keeps trying automatically\./);
+    expect(contractNotice(captured, NOW)?.text).toMatch(/payout has not reached the worker\. Treuhand keeps trying automatically\./);
     const flow = moneyFlow(captured);
     expect(flow.legs.payout).toMatchObject({ status: "failed", verb: "Payout failed" });
     expect(flow.places.capture.word).toBe("charged · step being retried");
     expect(flowText(captured)).not.toMatch(/paying out|is sending it|on its way/);
     const position = moneyPosition(captured.contract, captured.ledger, null, captured.activity.last_failure);
     expect(position.detail).not.toMatch(/on its way/);
-    expect(position.detail).toMatch(/did not go through\. Proviso tries again automatically\./);
+    expect(position.detail).toMatch(/did not go through\. Treuhand tries again automatically\./);
   });
 });
 
@@ -166,7 +166,7 @@ describe("a split both parties accepted (DEF-12, DEF-13)", () => {
     expect(flow.places.returned.word).toBe("release being retried");
     expect(flowText(agreed)).not.toMatch(/both accept/);
     expect(moneyPosition(agreed.contract, agreed.ledger, null, agreed.activity.last_failure).detail).toMatch(
-      /Both accepted the split; settling it with PayPal did not go through yet, and Proviso tries again automatically\./,
+      /Both accepted the split; settling it with PayPal did not go through yet, and Treuhand tries again automatically\./,
     );
   });
 
@@ -198,7 +198,7 @@ describe("past the deadline (DEF-14, DEF-15)", () => {
     const failed = bundle(contract("FUNDED", { ...held, deadline_at: PAST }), {
       activity: { in_progress: null, last_failure: failure("expire", "void") },
     });
-    expect(contractNotice(failed, NOW)?.text).toBe("The deadline passed, but PayPal did not release the hold. Proviso tries again automatically.");
+    expect(contractNotice(failed, NOW)?.text).toBe("The deadline passed, but PayPal did not release the hold. Treuhand tries again automatically.");
     const running = bundle(contract("VERIFYING", { ...held, deadline_at: PAST }), { activity: { in_progress: "verify", last_failure: null } });
     expect(contractNotice(running, NOW)).toBeNull();
   });

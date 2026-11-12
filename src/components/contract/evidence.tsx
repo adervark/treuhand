@@ -84,7 +84,7 @@ export function ManipulationNotice({ record, outcome }: { record: ManipulationRe
       </p>
       <div className="flex flex-col gap-2.5 px-3 py-3">
         <p className="text-[0.8125rem] leading-snug text-ink">
-          The delivered page contains text aimed at the verifier. {record.modelReported ? "The AI flagged it" : "Proviso's scanner flagged it"}, and
+          The delivered page contains text aimed at the verifier. {record.modelReported ? "The AI flagged it" : "Treuhand's scanner flagged it"}, and
           the page was judged as if the text were not there.
           {outcome === "pass" ? <span className="font-semibold"> The test still passed: what a visitor sees meets it.</span> : null}
         </p>

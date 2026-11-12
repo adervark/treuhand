@@ -59,7 +59,7 @@ const TOO_MUCH_CENTS = 9_000_000;
 const CURRENCY = "USD";
 const FAKE_RECEIVER = "clause-smoke-no-account@example.com";
 /** Visa test number from developer.paypal.com/sandbox-testing/card-testing. */
-const TEST_CARD = { number: "4012888888881881", expiry: "2030-12", security_code: "123", name: "Proviso Smoke" };
+const TEST_CARD = { number: "4012888888881881", expiry: "2030-12", security_code: "123", name: "Treuhand Smoke" };
 
 const USAGE =
   "usage: paypal-smoke.ts order | capture <orderId> | void <orderId> | payout [email] | payout-status <batchId> |" +
@@ -93,7 +93,7 @@ async function createOrder(contractId: string) {
     contractId,
     amountCents: ORDER_CENTS,
     currency: CURRENCY,
-    description: `Proviso smoke test ${contractId}`,
+    description: `Treuhand smoke test ${contractId}`,
   });
   log("create order", { orderId: order.orderId, status: order.status, approve: linkOf(order.raw, "approve", "payer-action") });
   return order;
@@ -134,7 +134,7 @@ async function captureAndRefund(orderId: string): Promise<void> {
     captureId: capture.captureId,
     amountCents: REFUND_CENTS,
     currency: capture.currency,
-    note: "Proviso smoke test partial refund",
+    note: "Treuhand smoke test partial refund",
   };
   const refund = await refundCapture(refundInput);
   log("partial refund", { refundId: refund.refundId, status: refund.status, cents: refund.amountCents });
@@ -167,7 +167,7 @@ async function payoutMode(receiver: string | undefined): Promise<void> {
     receiverEmail: receiver ?? FAKE_RECEIVER,
     amountCents: PAYOUT_CENTS,
     currency: CURRENCY,
-    note: `Proviso smoke test ${contractId}`,
+    note: `Treuhand smoke test ${contractId}`,
   };
   log("contract id", { contractId, receiver: receiver ? "given" : "made-up example.com address" });
   const paid = await payout(input);
@@ -200,7 +200,7 @@ async function payoutMode(receiver: string | undefined): Promise<void> {
 async function payoutRetry(receiver: string | undefined): Promise<void> {
   await tokenCheck();
   const contractId = newContractId();
-  const base = { contractId, receiverEmail: receiver ?? FAKE_RECEIVER, currency: CURRENCY, note: `Proviso smoke ${contractId}` };
+  const base = { contractId, receiverEmail: receiver ?? FAKE_RECEIVER, currency: CURRENCY, note: `Treuhand smoke ${contractId}` };
   log("contract id", { contractId });
   try {
     const refused = await payout({ ...base, amountCents: TOO_MUCH_CENTS });

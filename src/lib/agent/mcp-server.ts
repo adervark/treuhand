@@ -1,5 +1,5 @@
 /**
- * Proviso as MCP tools, for AI agents acting for the payer or the worker.
+ * Treuhand as MCP tools, for AI agents acting for the payer or the worker.
  * Served over Streamable HTTP at `/api/mcp` (src/app/api/mcp/route.ts), one
  * server per request; the stdio entry (scripts/mcp-server.ts) relays a local
  * MCP client to that endpoint over HTTP with the same bearer token.
@@ -39,7 +39,7 @@ import { checkReceipt, receiptHolds } from "@/lib/verifier/receipt-core";
 import { verifierPublicKey } from "@/lib/verifier/signing-key";
 import { hasScope, requireAgentScope, type AgentPrincipal, type ScopeNeed } from "./tokens";
 
-export const MCP_SERVER_NAME = "proviso";
+export const MCP_SERVER_NAME = "treuhand";
 export const MCP_SERVER_VERSION = "1.0.0";
 
 // ---------------------------------------------------------------------------
@@ -52,7 +52,7 @@ function advertise(schema: z.ZodType): StandardSchemaWithJSON {
   return {
     "~standard": {
       version: 1,
-      vendor: "proviso",
+      vendor: "treuhand",
       validate: (value: unknown) => ({ value }),
       jsonSchema: schema["~standard"].jsonSchema,
     },
@@ -305,7 +305,7 @@ export function buildMcpServer(agent: AgentPrincipal, baseUrl: string): McpServe
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     {
       instructions:
-        "Proviso holds a payer's money with a PayPal authorization and pays the worker through PayPal Payouts " +
+        "Treuhand holds a payer's money with a PayPal authorization and pays the worker through PayPal Payouts " +
         "when an AI verifier proves the delivered work meets conditions both parties signed. Your token acts " +
         "as one party (whoami). Typical flow: payer drafts (draft_contract) and creates (create_contract); both " +
         "sign; the payer, a person, funds it in PayPal (get_funding_instructions); the worker submits a URL (submit_work); " +
