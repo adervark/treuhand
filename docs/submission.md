@@ -1,6 +1,6 @@
 # Devpost submission text
 
-Ready to paste into the Devpost form. Every statement is true of the code and the recorded runs as of 12 Nov 2026. Before submitting, the owner fills in `[REPO URL]`, `[HOSTED URL]` (or deletes that paragraph if there is no hosted demo), `[VIDEO URL]` and `[SANDBOX PAYER LOGIN]`. If the money path in `docs/runbook.md` is run on US sandbox accounts before the deadline, update the sentences marked *(update if the runbook is run)* here and "Status and limitations" in the README.
+Ready to paste into the Devpost form. Every statement is true of the code and the recorded runs as of 12 Nov 2026. Before submitting, the owner fills in `[VIDEO URL]`, the one placeholder left. There is no hosted demo, so judges run it from the repository; if one is deployed, add its URL and the sandbox payer login to Devpost's testing instructions field directly, not to this public file. If the money path in `docs/runbook.md` is run on US sandbox accounts before the deadline, update the sentences marked *(update if the runbook is run)* here and "Status and limitations" in the README.
 
 ---
 
@@ -114,7 +114,7 @@ next.js, react, typescript, tailwind-css, sqlite, better-sqlite3, playwright, ch
 
 **Code:** https://github.com/adervark/treuhand. "Quick start" in the README runs it locally (Node.js 22.13+, pnpm, a DeepSeek API key, and a PayPal sandbox app on a US business account).
 
-**Hosted demo:** `[HOSTED URL]` (delete this paragraph if there is none). There is no sign-up: use the "Viewing as Payer / Worker" switch at the top right to act as either side. Every window of one browser acts as the same side, so use the switch in one window, or two browser profiles. To fund a contract, log in to the PayPal window with the sandbox payer: `[SANDBOX PAYER LOGIN]`. This is a PayPal sandbox account; no real money moves. Everyone using the demo shares the same two identities and sees the same contracts.
+**Acting as each side:** there is no sign-up. Use the "Viewing as Payer / Worker" switch at the top right to act as either side. Every window of one browser acts as the same side, so use the switch in one window, or two browser profiles. To fund a contract, log in to the PayPal window with the sandbox personal account you set as `DEMO_PAYER_EMAIL` (README, "PayPal sandbox accounts"). These are PayPal sandbox accounts; no real money moves.
 
 **A five-minute script** (also in the README, with expected results):
 
