@@ -1,0 +1,45 @@
+{
+  "name": "proviso",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "next typegen && tsc --noEmit",
+    "lint": "eslint",
+    "test": "vitest run",
+    "db:init": "tsx --env-file-if-exists=.env scripts/db-init.ts",
+    "db:seed": "tsx --env-file-if-exists=.env scripts/db-seed.ts",
+    "agent:token": "tsx --env-file-if-exists=.env scripts/agent-token.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/server": "2.4.0",
+    "ag-charts-community": "^14.3.0",
+    "ag-charts-react": "^14.3.0",
+    "ag-grid-community": "^36.3.0",
+    "ag-grid-react": "^36.3.0",
+    "better-sqlite3": "^13.0.3",
+    "next": "16.4.6",
+    "openai": "^7.54.0",
+    "playwright": "^1.65.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "4.3.3",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.1.0"
+  },
+  "packageManager": "pnpm@11.7.0"
+}

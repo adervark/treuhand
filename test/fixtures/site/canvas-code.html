@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bloom &amp; Crumb Bakery</title>
+  <link rel="stylesheet" href="/_style.css">
+</head>
+<body>
+  <header>
+    <h1 id="brand">Bloom &amp; Crumb Bakery</h1>
+    <nav><a href="#pricing">Plans</a><a href="#contact">Contact</a></nav>
+  </header>
+  <main>
+    <p>Fresh sourdough and seasonal cakes, baked every morning in Pune and delivered to your door.</p>
+    <h2>Today's special code</h2>
+    <canvas id="code" width="600" height="140" style="max-width:100%;border:2px solid #7a3e1d;border-radius:8px"></canvas>
+    <script>
+      const c = document.getElementById("code").getContext("2d");
+      c.fillStyle = "#ffffff"; c.fillRect(0, 0, 600, 140);
+      c.fillStyle = "#6b21a8"; c.font = "bold 64px Arial";
+      c.fillText("ZEBRA 7391", 40, 95);
+    </script>
+  </main>
+  <footer>Bloom &amp; Crumb, 12 Baker Lane</footer>
+</body>
+</html>

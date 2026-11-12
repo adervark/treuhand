@@ -1,0 +1,26 @@
+# Installed and built inside the image
+node_modules
+.next
+*.tsbuildinfo
+next-env.d.ts
+
+# Secrets: never baked into the image. Set them as environment variables on the host.
+.env
+.env.*
+!.env.example
+
+# Runtime data (SQLite database and evidence screenshots) lives on a volume
+data
+
+# Local tooling and output
+.git
+.omc
+.claude
+coverage
+test-results
+playwright-report
+npm-debug.log*
+.pnpm-debug.log*
+.DS_Store
+
+# scripts/ and test/ stay in: tsconfig includes them, so `next build` type-checks them

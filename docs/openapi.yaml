@@ -1,0 +1,1441 @@
+openapi: 3.1.0
+info:
+  title: Proviso API
+  version: 1.0.0
+  summary: Conditional payments released by an AI verifier.
+  description: |
+    Proviso holds a payer's money with a PayPal authorization and pays the worker
+    through PayPal Payouts when an AI verifier proves the delivered work meets the
+    conditions both parties signed. This is the JSON API the web app and AI agents
+    use. It is written from the route handlers in `src/app/api/**`; `docs/api.md`
+    is the prose companion with every rule in full.
+
+    **Acting party.** Every contract action is taken as one party, `payer` or
+    `worker`. An agent sends `Authorization: Bearer <agent token>`
+    (`agentToken`); the token's party acts, and the token must carry the scope
+    the operation lists (`read`, `write` or `sign`). Without that header the
+    party comes from the web app's `clause_view_as` cookie (`viewAsCookie`,
+    default `payer`); the demo has no other sign-in. A present but malformed,
+    unknown or revoked bearer token is always refused with `401`, never
+    ignored. Tokens are created with `scripts/agent-token.ts` (see
+    `docs/agents.md`). The web app's pages also send `X-Proviso-Role`, the
+    role a page was rendered for; it is ignored with an agent token.
+
+    **Two steps stay with people.** Funding (`/fund/*`) is refused to every
+    agent token: the payer approves the payment in PayPal's own window.
+    Signing needs the `sign` scope, which a token has only when its party
+    created it with `--allow-sign`.
+
+    **Conventions.** Money is integer cents (`amount_cents`). Dates are ISO
+    8601 UTC strings. Every non-2xx JSON response is an `Error`. The PayPal
+    webhook receiver (`POST /api/webhooks/paypal`) is called only by PayPal and
+    is not described here.
+
+    **For agents** there is also an MCP server at `/api/mcp` (Streamable HTTP)
+    with the same rules; see `docs/agents.md`.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: '{baseUrl}'
+    description: A running Proviso app
+    variables:
+      baseUrl:
+        default: http://localhost:3000
+        description: The app's origin, e.g. http://localhost:3000 for `pnpm dev`.
+tags:
+  - name: Contracts
+    description: Draft, create, read and sign contracts.
+  - name: Funding
+    description: The payer's PayPal hold. Never available to agent tokens.
+  - name: Verification
+    description: Submit work, re-run verification, read evidence and signed receipts.
+  - name: Disputes
+    description: Open a dispute, argue, and accept or decline the mediator's split.
+  - name: Money
+    description: The ledger of PayPal movements and the time-based sweep.
+  - name: Agents
+    description: The MCP endpoint and this description.
+  - name: Configuration
+    description: Values the web app reads at runtime.
+
+paths:
+  /api/contracts/draft:
+    post:
+      tags: [Contracts]
+      operationId: draftContract
+      summary: Draft a contract from plain English (payer only)
+      description: |
+        Turns a deal written in plain English into a proposed contract whose
+        conditions a machine can check, or a refusal naming the conditions that
+        cannot be checked. Creates nothing. `amount_cents`, `currency` and
+        `deadline_at` are null when the deal did not state them; fill them in
+        before `POST /api/contracts`. Show `notes` to both parties.
+      security:
+        - agentToken: [write]
+        - viewAsCookie: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/PageRole'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftBody' }
+            example:
+              prompt: Fix issue #212 in acme/app for $50 by Friday. The PR must be merged and CI green.
+              type: code_bounty
+      responses:
+        '200':
+          description: The drafter's result, unchanged.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/Internal' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/NotConfigured' }
+
+  /api/contracts:
+    get:
+      tags: [Contracts]
+      operationId: listContracts
+      summary: List every contract, newest first
+      security:
+        - {}
+      responses:
+        '200':
+          description: All contracts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [contracts]
+                properties:
+                  contracts:
+                    type: array
+                    items: { $ref: '#/components/schemas/Contract' }
+        '500': { $ref: '#/components/responses/Internal' }
+    post:
+      tags: [Contracts]
+      operationId: createContract
+      summary: Create a DRAFT contract from a proposed contract (payer only)
+      description: |
+        Takes the `contract` of a draft (possibly edited) with every term filled
+        in. The parties are the seeded payer and worker identities. Nothing is
+        signed or funded yet.
+      security:
+        - agentToken: [write]
+        - viewAsCookie: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/PageRole'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateContractBody' }
+      responses:
+        '201':
+          description: The new contract, in DRAFT.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [contract]
+                properties:
+                  contract: { $ref: '#/components/schemas/Contract' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/InvalidCondition' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /api/contracts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ContractId'
+    get:
+      tags: [Contracts]
+      operationId: getContract
+      summary: Read a contract with everything derived for the acting party
+      description: |
+        The contract, its conditions, submissions, verdicts, ledger, audit
+        events and dispute, plus what the acting party can do now
+        (`allowed_actions`), the verification status, the money activity, the
+        payout status, the terms hash and the newest signed receipt. Poll it
+        while the contract is SUBMITTED or VERIFYING, while
+        `activity.in_progress` is not null, or while a payout is not yet
+        `SUCCESS`.
+      security:
+        - agentToken: [read]
+        - viewAsCookie: []
+        - {}
+      responses:
+        '200':
+          description: The contract detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContractDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /api/contracts/{id}/conditions:
+    parameters:
+      - $ref: '#/components/parameters/ContractId'
+    patch:
+      tags: [Contracts]
+      operationId: editConditions
+      summary: Replace the conditions (either party, DRAFT only)
+      description: Replaces the whole list and clears both signatures.
+      security:
+        - agentToken: [write]
+        - viewAsCookie: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/PageRole'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EditConditionsBody' }
+      responses:
+        '200':
+          description: The contract and its new conditions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [contract, conditions]
+                properties:
+                  contract: { $ref: '#/components/schemas/Contract' }
+                  conditions:
+                    type: array
+                    items: { $ref: '#/components/schemas/Condition' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/InvalidCondition' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /api/contracts/{id}/sign:
+    parameters:
+      - $ref: '#/components/parameters/ContractId'
+    post:
+      tags: [Contracts]
+      operationId: signContract
+      summary: Sign as the acting party
+      description: |
+        When the second party signs the contract becomes SIGNED and its terms
+        are fixed. Signing twice is a no-op. An agent token needs the `sign`
+        scope (created with `--allow-sign`); without it the answer is 403.
+      security:
+        - agentToken: [sign]
+        - viewAsCookie: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/PageRole'
+      responses:
+        '200':
+          description: The contract after signing.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [contract]
+                properties:
+                  contract: { $ref: '#/components/schemas/Contract' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /api/contracts/{id}/fund/create-order:
+    parameters:
+      - $ref: '#/components/parameters/ContractId'
+    post:
+      tags: [Funding]
+      operationId: createFundingOrder
+      summary: Create the PayPal order for the payer's button (payer, SIGNED, before the deadline)
+      description: |
+        A PayPal order with `intent: AUTHORIZE` for exactly the contract's
+        amount and currency, for the PayPal JS SDK button's `createOrder`.
+        Refused (403) to every agent token: the payer approves the payment in
+        PayPal's own window.
+      security:
+        - viewAsCookie: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/PageRole'
+      responses:
+        '200':
+          description: The PayPal order id.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orderId]
+                properties:
+                  orderId: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/Internal' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/NotConfigured' }
+
+  /api/contracts/{id}/fund/authorize:
+    parameters:
+      - $ref: '#/components/parameters/ContractId'
+    post:
+      tags: [Funding]
+      operationId: authorizeFunding
+      summary: Authorize the approved order; the contract becomes FUNDED (payer only)
+      description: |
+        Called with the order id from the PayPal button's `onApprove`. Places
+        the hold and moves the contract to FUNDED. Repeating it after success
+        returns the contract again. A hold for the wrong amount, currency or
+        contract is voided and answered `ORDER_MISMATCH`. Refused (403) to every
+        agent token.
+      security:
+        - viewAsCookie: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/PageRole'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthorizeBody' }
+      responses:
+        '200':
+          description: The contract, FUNDED.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [contract]
+                properties:
+                  contract: { $ref: '#/components/schemas/Contract' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/Internal' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/NotConfigured' }
+
+  /api/contracts/{id}/submit:
+    parameters:
+      - $ref: '#/components/parameters/ContractId'
+    post:
+      tags: [Verification]
+      operationId: submitWork
+      summary: Submit delivered work (worker, FUNDED or FAILED, before the deadline)
+      description: |
+        Records the submission; the contract is VERIFYING when this returns and
+        the verifier runs after the response. Poll `GET /api/contracts/{id}`.
+        It ends PASSED (then paid automatically after the contest window),
+        FAILED (resubmit allowed), or stays VERIFYING with
+        `verification.status` `inconclusive` or `error`.
+      security:
+        - agentToken: [write]
+        - viewAsCookie: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/PageRole'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubmitBody' }
+            example:
+              url: https://github.com/acme/app/pull/213
+      responses:
+        '202':
+          description: Accepted; verification is running.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerificationJob' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /api/contracts/{id}/verify:
+    parameters:
+      - $ref: '#/components/parameters/ContractId'
+    post:
+      tags: [Verification]
+      operationId: rerunVerification
+      summary: Re-run an inconclusive or crashed verification (either party)
+      description: |
+        Re-runs verification of the latest submission while the contract is
+        still VERIFYING after an inconclusive or crashed run, before the
+        deadline. Not for a failed run: after a fail the worker resubmits.
+      security:
+        - agentToken: [write]
+        - viewAsCookie: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/PageRole'
+      responses:
+        '202':
+          description: Accepted; verification is running.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerificationJob' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /api/contracts/{id}/receipts:
+    parameters:
+      - $ref: '#/components/parameters/ContractId'
+    get:
+      tags: [Verification]
+      operationId: listReceipts
+      summary: Every signed verification receipt for the contract, newest first
+      description: |
+        One receipt per finished verification run, re-runs included. Check a
+        receipt with `GET /api/verifier/public-key` and
+        `scripts/verify-receipt.ts`, or the MCP tool `check_receipt`.
+      security:
+        - {}
+      responses:
+        '200':
+          description: The receipts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContractReceipts' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /api/contracts/{id}/dispute:
+    parameters:
+      - $ref: '#/components/parameters/ContractId'
+    post:
+      tags: [Disputes]
+      operationId: openDispute
+      summary: Open a dispute with the acting party's argument
+      description: |
+        Allowed when the contract is FUNDED, FAILED, PASSED, or VERIFYING after
+        an inconclusive or crashed run, and only until the money is captured
+        for a payout. The contract becomes DISPUTED.
+      security:
+        - agentToken: [write]
+        - viewAsCookie: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/PageRole'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ArgumentBody' }
+      responses:
+        '200':
+          description: The new dispute, OPEN.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dispute]
+                properties:
+                  dispute: { $ref: '#/components/schemas/Dispute' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /api/contracts/{id}/dispute/respond:
+    parameters:
+      - $ref: '#/components/parameters/ContractId'
+    post:
+      tags: [Disputes]
+      operationId: respondToDispute
+      summary: Store or revise the acting party's argument (dispute OPEN)
+      description: |
+        Once both parties have argued, the AI mediator proposes how much goes
+        to the worker (the dispute becomes PROPOSED). If the mediator fails the
+        argument is kept, the answer is `AI_ERROR`, and calling again retries.
+      security:
+        - agentToken: [write]
+        - viewAsCookie: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/PageRole'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ArgumentBody' }
+      responses:
+        '200':
+          description: The dispute, OPEN or PROPOSED.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dispute]
+                properties:
+                  dispute: { $ref: '#/components/schemas/Dispute' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/Internal' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/NotConfigured' }
+
+  /api/contracts/{id}/dispute/accept:
+    parameters:
+      - $ref: '#/components/parameters/ContractId'
+    post:
+      tags: [Disputes]
+      operationId: answerProposal
+      summary: Accept the mediator's split, or decline it with `{"accept":false}` (dispute PROPOSED)
+      description: |
+        Accepting records the acting party's acceptance; when both have
+        accepted, the split is settled in the same request (capture, refund of
+        the payer's share, payout of the worker's share). Declining escalates
+        the dispute and the contract to ESCALATED; a party who has accepted
+        cannot decline. If a PayPal step fails the acceptance is kept and the
+        answer is `PAYPAL_ERROR`; accepting again resumes.
+      security:
+        - agentToken: [write]
+        - viewAsCookie: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/PageRole'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AcceptBody' }
+      responses:
+        '200':
+          description: The dispute and the contract after the answer.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AcceptResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/Internal' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/NotConfigured' }
+
+  /api/sweep:
+    post:
+      tags: [Money]
+      operationId: runSweep
+      summary: Run the time-based and retry work
+      description: |
+        Voids holds on contracts past their deadline (-> EXPIRED), settles
+        PASSED contracts whose contest window has elapsed (capture, payout,
+        PAID once PayPal reports the payout SUCCESS), retries failed or
+        returned payouts, and resumes split settlements both parties accepted.
+        A contract another request is working on is skipped. Call it on a
+        timer or from a cron.
+      security:
+        - {}
+      responses:
+        '200':
+          description: What this sweep moved, and what failed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SweepResult' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /api/ledger:
+    get:
+      tags: [Money]
+      operationId: listLedger
+      summary: Every ledger entry, oldest first
+      description: |
+        Each PayPal movement on any contract, with its contract's title, state
+        and currency. A `PAID_OUT` row is written when PayPal reports the payout
+        item `SUCCESS`; its `paypal_ref` is the payout batch id.
+      security:
+        - {}
+      responses:
+        '200':
+          description: The ledger.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items: { $ref: '#/components/schemas/LedgerRow' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /api/evidence/{submissionId}/{file}:
+    get:
+      tags: [Verification]
+      operationId: getEvidence
+      summary: A screenshot the verifier stored as evidence
+      description: |
+        A verdict's `evidence.screenshots` holds paths such as
+        `data/evidence/<submissionId>/<file>`; drop the `data/evidence/` prefix
+        to get this URL.
+      security:
+        - {}
+      parameters:
+        - name: submissionId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/FileSegment' }
+        - name: file
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/FileSegment' }
+      responses:
+        '200':
+          description: The image bytes (private one-day cache, `X-Content-Type-Options` nosniff).
+          content:
+            image/jpeg:
+              schema: { type: string, contentMediaType: image/jpeg }
+            image/png:
+              schema: { type: string, contentMediaType: image/png }
+            image/webp:
+              schema: { type: string, contentMediaType: image/webp }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /api/verifier/public-key:
+    get:
+      tags: [Verification]
+      operationId: getVerifierPublicKey
+      summary: The Ed25519 key that signs verification receipts
+      security:
+        - {}
+      responses:
+        '200':
+          description: The public key and its fingerprint.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerifierPublicKey' }
+        '500': { $ref: '#/components/responses/Internal' }
+
+  /api/config:
+    get:
+      tags: [Configuration]
+      operationId: getConfig
+      summary: The PayPal client id for the checkout button
+      security:
+        - {}
+      responses:
+        '200':
+          description: The public PayPal client id.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [paypalClientId]
+                properties:
+                  paypalClientId: { type: string }
+        '500': { $ref: '#/components/responses/Internal' }
+        '503': { $ref: '#/components/responses/NotConfigured' }
+
+  /api/mcp:
+    post:
+      tags: [Agents]
+      operationId: mcp
+      summary: The MCP server (Streamable HTTP, JSON-RPC 2.0)
+      description: |
+        Proviso's tools for AI agents, served statelessly over MCP Streamable
+        HTTP: 2026-07-28 clients on the per-request path, 2025-era clients on a
+        stateless fallback. Use an MCP client, not hand-written requests; the
+        tool list and a worked example are in `docs/agents.md`. Every request
+        needs an agent token; without one the answer is `401` with
+        `WWW-Authenticate: Bearer realm="proviso"`. A tool failure is a tool
+        result with `isError: true` whose text is
+        `{"error":{"code","message"},"http_status"}`, the same codes as this API.
+      security:
+        - agentToken: [read]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: A JSON-RPC 2.0 request or notification.
+              type: object
+              required: [jsonrpc, method]
+              properties:
+                jsonrpc: { const: '2.0' }
+                id:
+                  oneOf:
+                    - type: string
+                    - type: integer
+                method: { type: string }
+                params: { type: object }
+      responses:
+        '200':
+          description: A JSON-RPC response, as JSON or as an SSE stream.
+          content:
+            application/json:
+              schema: { type: object }
+            text/event-stream:
+              schema: { type: string }
+        '202':
+          description: A notification was accepted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/openapi:
+    get:
+      tags: [Agents]
+      operationId: getOpenApi
+      summary: This OpenAPI description
+      security:
+        - {}
+      responses:
+        '200':
+          description: docs/openapi.yaml.
+          content:
+            application/yaml:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    agentToken:
+      type: http
+      scheme: bearer
+      bearerFormat: proviso_<43 base64url characters>
+      description: |
+        An agent token from `scripts/agent-token.ts create --role payer|worker
+        [--allow-sign] [--read-only]`. It acts as its party. Scopes, listed per
+        operation: `read` (read), `write` (act as the party), `sign` (sign
+        contracts; only with `--allow-sign`). Funding is never allowed.
+    viewAsCookie:
+      type: apiKey
+      in: cookie
+      name: clause_view_as
+      description: |
+        The web app's "view as" switch, `payer` or `worker` (default `payer`
+        when absent). Used only when there is no `Authorization` header. Not a
+        credential: the demo has no other sign-in.
+
+  parameters:
+    ContractId:
+      name: id
+      in: path
+      required: true
+      description: The contract's id.
+      schema: { type: string, minLength: 1 }
+    PageRole:
+      name: X-Proviso-Role
+      in: header
+      required: false
+      description: |
+        The web app's pages send the role they were rendered for. Without an
+        agent token, a write whose header names another role than the
+        `clause_view_as` cookie's is refused with `409 ROLE_MISMATCH` before
+        anything is done (another tab switched the role). Optional; ignored
+        with an agent token.
+      schema: { $ref: '#/components/schemas/Party' }
+
+  responses:
+    BadRequest:
+      description: '`VALIDATION_ERROR`: the body is not JSON or fails its schema; `message` is "<field path>: <problem>", several joined with "; ".'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: VALIDATION_ERROR, message: 'amount_cents: is required (the deal did not state an amount)' }
+    Unauthorized:
+      description: '`UNAUTHORIZED`: a bearer token was sent but is malformed, unknown or revoked (or, on `/api/mcp`, none was sent).'
+      headers:
+        WWW-Authenticate:
+          description: Sent by `/api/mcp`.
+          schema: { type: string }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: UNAUTHORIZED, message: Unknown agent token. }
+    Forbidden:
+      description: '`FORBIDDEN`: the acting party may not do this (e.g. the worker drafting), or the agent token lacks the scope (signing without `sign`, any funding).'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error: { code: FORBIDDEN, message: Only the worker can submit work. You are viewing as the payer. }
+    NotFound:
+      description: '`NOT_FOUND`: no contract with that id, no dispute or submission to act on, or no such evidence file.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: |
+        `ILLEGAL_TRANSITION` (the state does not allow this), `CONTRACT_LOCKED`
+        (editing after DRAFT), `DEADLINE_PASSED`, `ORDER_MISMATCH`, `BUSY`
+        (another action is running; retry shortly), `DISPUTE_STATE`,
+        `IDENTITIES_MISSING` (run `pnpm db:seed`), or `ROLE_MISMATCH` (the
+        `X-Proviso-Role` header names another role than the cookie's; never
+        with an agent token).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidCondition:
+      description: '`INVALID_CONDITION`: a check kind is not allowed for the contract type.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadGateway:
+      description: '`PAYPAL_ERROR` (a PayPal call failed; what succeeded is recorded and the step is retried) or `AI_ERROR` (the drafter or mediator failed).'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotConfigured:
+      description: '`NOT_CONFIGURED`: an environment key is missing (PayPal, DeepSeek); `message` names it.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Internal:
+      description: '`INTERNAL`: anything else; details go to the server log.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { $ref: '#/components/schemas/ErrorCode' }
+            message:
+              type: string
+              description: Written for people; safe to show.
+    ErrorCode:
+      type: string
+      enum:
+        - VALIDATION_ERROR
+        - UNAUTHORIZED
+        - INVALID_CONDITION
+        - FORBIDDEN
+        - NOT_FOUND
+        - ILLEGAL_TRANSITION
+        - CONTRACT_LOCKED
+        - DEADLINE_PASSED
+        - ORDER_MISMATCH
+        - BUSY
+        - DISPUTE_STATE
+        - IDENTITIES_MISSING
+        - ROLE_MISMATCH
+        - PAYPAL_ERROR
+        - AI_ERROR
+        - NOT_CONFIGURED
+        - INTERNAL
+
+    Party:
+      type: string
+      enum: [payer, worker]
+    ContractState:
+      type: string
+      enum: [DRAFT, SIGNED, FUNDED, SUBMITTED, VERIFYING, PASSED, FAILED, PAID, EXPIRED, DISPUTED, SETTLED, ESCALATED]
+    ContractType:
+      type: string
+      enum: [code_bounty, website_milestone]
+      description: 'code_bounty: a GitHub pull request (github_* checks). website_milestone: a public web page (http_ok, dom_assert, responsive, form_submits, ai_page_judgement).'
+    CheckKind:
+      type: string
+      enum: [github_pr_merged, github_checks_passed, github_pr_references_issue, http_ok, dom_assert, responsive, form_submits, ai_page_judgement]
+    LedgerKind:
+      type: string
+      enum: [AUTHORIZED, CAPTURED, PAID_OUT, VOIDED, REFUNDED]
+    DisputeState:
+      type: string
+      enum: [OPEN, PROPOSED, SETTLED, ESCALATED]
+    AllowedAction:
+      type: string
+      enum: [edit_conditions, sign, fund, submit, rerun_verification, dispute, respond, accept, decline]
+    DateTime:
+      type: string
+      format: date-time
+    Sha256Hex:
+      type: string
+      pattern: '^[0-9a-f]{64}$'
+    FileSegment:
+      type: string
+      pattern: '^[A-Za-z0-9_-][A-Za-z0-9._-]{0,199}$'
+
+    Repo:
+      type: string
+      pattern: '^[\w.-]+/[\w.-]+$'
+      description: A GitHub repository, "owner/name".
+    PagePath:
+      type: string
+      pattern: '^/'
+      description: Path appended to the submitted URL; defaults to the URL itself.
+    GithubRepoParams:
+      type: object
+      required: [repo]
+      properties:
+        repo: { $ref: '#/components/schemas/Repo' }
+    GithubIssueParams:
+      type: object
+      required: [repo, issue]
+      properties:
+        repo: { $ref: '#/components/schemas/Repo' }
+        issue: { type: integer, minimum: 1 }
+    HttpOkParams:
+      type: object
+      properties:
+        path: { $ref: '#/components/schemas/PagePath' }
+    DomAssertParams:
+      type: object
+      required: [selector]
+      properties:
+        path: { $ref: '#/components/schemas/PagePath' }
+        selector: { type: string, minLength: 1, description: A CSS selector. }
+        text: { type: string, minLength: 1, description: 'If set, the matched element must contain this text.' }
+    ResponsiveParams:
+      type: object
+      properties:
+        path: { $ref: '#/components/schemas/PagePath' }
+        width: { type: integer, minimum: 240, maximum: 3840, default: 375, description: Viewport width in CSS pixels. }
+    FormSubmitsParams:
+      type: object
+      required: [form_selector, fields, success_text]
+      properties:
+        path: { $ref: '#/components/schemas/PagePath' }
+        form_selector: { type: string, minLength: 1 }
+        fields:
+          type: object
+          additionalProperties: { type: string }
+          description: CSS selector -> value to fill.
+        success_text: { type: string, minLength: 1, description: Text that must appear after submitting. }
+    AiPageJudgementParams:
+      type: object
+      required: [criterion]
+      properties:
+        path: { $ref: '#/components/schemas/PagePath' }
+        criterion: { type: string, minLength: 1, description: The yes/no question a panel of AI reviewers answers about the rendered page. }
+
+    ConditionCheck:
+      description: A check kind and the params that kind takes.
+      oneOf:
+        - type: object
+          required: [check_kind, check_params]
+          properties:
+            check_kind: { const: github_pr_merged }
+            check_params: { $ref: '#/components/schemas/GithubRepoParams' }
+        - type: object
+          required: [check_kind, check_params]
+          properties:
+            check_kind: { const: github_checks_passed }
+            check_params: { $ref: '#/components/schemas/GithubRepoParams' }
+        - type: object
+          required: [check_kind, check_params]
+          properties:
+            check_kind: { const: github_pr_references_issue }
+            check_params: { $ref: '#/components/schemas/GithubIssueParams' }
+        - type: object
+          required: [check_kind, check_params]
+          properties:
+            check_kind: { const: http_ok }
+            check_params: { $ref: '#/components/schemas/HttpOkParams' }
+        - type: object
+          required: [check_kind, check_params]
+          properties:
+            check_kind: { const: dom_assert }
+            check_params: { $ref: '#/components/schemas/DomAssertParams' }
+        - type: object
+          required: [check_kind, check_params]
+          properties:
+            check_kind: { const: responsive }
+            check_params: { $ref: '#/components/schemas/ResponsiveParams' }
+        - type: object
+          required: [check_kind, check_params]
+          properties:
+            check_kind: { const: form_submits }
+            check_params: { $ref: '#/components/schemas/FormSubmitsParams' }
+        - type: object
+          required: [check_kind, check_params]
+          properties:
+            check_kind: { const: ai_page_judgement }
+            check_params: { $ref: '#/components/schemas/AiPageJudgementParams' }
+    ConditionInput:
+      allOf:
+        - type: object
+          required: [text]
+          properties:
+            text: { type: string, minLength: 1, description: The condition in words both parties read. }
+        - $ref: '#/components/schemas/ConditionCheck'
+    Condition:
+      allOf:
+        - type: object
+          required: [id, contract_id, position]
+          properties:
+            id: { type: string }
+            contract_id: { type: string }
+            position: { type: integer, minimum: 0 }
+        - $ref: '#/components/schemas/ConditionInput'
+
+    Contract:
+      type: object
+      required: [id, title, type, payer_email, worker_email, amount_cents, currency, deadline_at, state, payer_signed_at, worker_signed_at, paypal_order_id, paypal_authorization_id, paypal_capture_id, paypal_payout_batch_id, created_at, updated_at]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        type: { $ref: '#/components/schemas/ContractType' }
+        payer_email: { type: string, format: email }
+        worker_email: { type: string, format: email }
+        amount_cents: { type: integer, minimum: 1 }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        deadline_at: { $ref: '#/components/schemas/DateTime' }
+        state: { $ref: '#/components/schemas/ContractState' }
+        payer_signed_at: { type: [string, 'null'], format: date-time }
+        worker_signed_at: { type: [string, 'null'], format: date-time }
+        paypal_order_id: { type: [string, 'null'] }
+        paypal_authorization_id: { type: [string, 'null'] }
+        paypal_capture_id: { type: [string, 'null'] }
+        paypal_payout_batch_id: { type: [string, 'null'] }
+        created_at: { $ref: '#/components/schemas/DateTime' }
+        updated_at: { $ref: '#/components/schemas/DateTime' }
+    Submission:
+      type: object
+      required: [id, contract_id, url, created_at]
+      properties:
+        id: { type: string }
+        contract_id: { type: string }
+        url: { type: string, format: uri }
+        created_at: { $ref: '#/components/schemas/DateTime' }
+    Verdict:
+      type: object
+      required: [id, submission_id, condition_id, passed, confidence, reasoning, evidence, created_at]
+      properties:
+        id: { type: string }
+        submission_id: { type: string }
+        condition_id: { type: string }
+        passed: { type: boolean }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        reasoning: { type: string }
+        evidence:
+          type: object
+          description: |
+            What the check observed. `outcome` is pass, fail or inconclusive
+            (absent on older rows). `screenshots` are stored paths, served by
+            `GET /api/evidence/{submissionId}/{file}`. An AI-judged check
+            carries `panel`: the reviewer panel's size, rule, decision,
+            agreement and each reviewer's vote, confidence and reasoning.
+          properties:
+            outcome:
+              type: string
+              enum: [pass, fail, inconclusive]
+            screenshots:
+              type: array
+              items: { type: string }
+            responses:
+              type: array
+              items: {}
+          additionalProperties: true
+        created_at: { $ref: '#/components/schemas/DateTime' }
+    LedgerEntry:
+      type: object
+      description: A PayPal movement, without the stored PayPal body.
+      required: [id, contract_id, kind, amount_cents, paypal_ref, created_at]
+      properties:
+        id: { type: string }
+        contract_id: { type: string }
+        kind: { $ref: '#/components/schemas/LedgerKind' }
+        amount_cents: { type: integer, minimum: 0 }
+        paypal_ref: { type: [string, 'null'] }
+        created_at: { $ref: '#/components/schemas/DateTime' }
+    LedgerRow:
+      allOf:
+        - $ref: '#/components/schemas/LedgerEntry'
+        - type: object
+          required: [contract_title, contract_state, currency]
+          properties:
+            contract_title: { type: string }
+            contract_state: { $ref: '#/components/schemas/ContractState' }
+            currency: { type: string }
+    Dispute:
+      type: object
+      required: [id, contract_id, opened_by, payer_argument, worker_argument, proposed_worker_cents, proposal_reasoning, payer_accepted, worker_accepted, state, created_at, updated_at]
+      properties:
+        id: { type: string }
+        contract_id: { type: string }
+        opened_by: { $ref: '#/components/schemas/Party' }
+        payer_argument: { type: [string, 'null'] }
+        worker_argument: { type: [string, 'null'] }
+        proposed_worker_cents: { type: [integer, 'null'], minimum: 0 }
+        proposal_reasoning: { type: [string, 'null'] }
+        payer_accepted: { type: [boolean, 'null'], description: null until answered. }
+        worker_accepted: { type: [boolean, 'null'], description: null until answered. }
+        state: { $ref: '#/components/schemas/DisputeState' }
+        created_at: { $ref: '#/components/schemas/DateTime' }
+        updated_at: { $ref: '#/components/schemas/DateTime' }
+    ContractEvent:
+      type: object
+      description: One audit-trail entry.
+      required: [id, contract_id, kind, detail, created_at]
+      properties:
+        id: { type: string }
+        contract_id: { type: string }
+        kind:
+          type: string
+          description: e.g. CONTRACT_CREATED, STATE_CHANGED, SIGNED_OFF, FUNDS_AUTHORIZED, VERIFICATION_COMPLETED, PAYOUT_SENT.
+        detail:
+          type: object
+          additionalProperties: true
+        created_at: { $ref: '#/components/schemas/DateTime' }
+
+    VerificationStatus:
+      type: object
+      description: About the latest submission. inconclusive and error leave the contract VERIFYING; rerun_verification and dispute become available.
+      required: [status, submission_id, message, at]
+      properties:
+        status:
+          type: string
+          enum: [running, passed, failed, inconclusive, error]
+        submission_id: { type: string }
+        message: { type: [string, 'null'] }
+        at: { $ref: '#/components/schemas/DateTime' }
+    ActivityStatus:
+      type: object
+      required: [in_progress, last_failure]
+      properties:
+        in_progress:
+          type: [string, 'null']
+          enum: [fund, verify, settle_pass, expire, mediate, settle_split, null]
+        last_failure:
+          type: [object, 'null']
+          description: The latest failed money or mediation step not yet followed by progress; retried by the sweep or the next action.
+          required: [action, step, message, at]
+          properties:
+            action: { type: string }
+            step:
+              type: string
+              description: create_order, authorize, void_mismatched_hold, capture, payout, payout_status, settle, void, refund, propose_split or validate_proposal.
+            message: { type: string }
+            at: { $ref: '#/components/schemas/DateTime' }
+    PayoutStatus:
+      type: object
+      required: [payout_batch_id, amount_cents, status, at]
+      properties:
+        payout_batch_id: { type: string }
+        amount_cents: { type: integer }
+        status:
+          type: string
+          description: PayPal's payout item status (SUCCESS, PENDING, UNCLAIMED, FAILED, RETURNED, BLOCKED, ...).
+        at: { $ref: '#/components/schemas/DateTime' }
+    ContractDetail:
+      type: object
+      required: [contract, conditions, submissions, verdicts, ledger, events, dispute, notes, viewer, allowed_actions, verification, activity, payout, terms_sha256, receipt]
+      properties:
+        contract: { $ref: '#/components/schemas/Contract' }
+        conditions:
+          type: array
+          description: Position order.
+          items: { $ref: '#/components/schemas/Condition' }
+        submissions:
+          type: array
+          description: Newest first.
+          items: { $ref: '#/components/schemas/Submission' }
+        verdicts:
+          type: array
+          description: Every verdict on every submission, oldest first; group by submission_id. Partial while verification.status is running.
+          items: { $ref: '#/components/schemas/Verdict' }
+        ledger:
+          type: array
+          description: Oldest first.
+          items: { $ref: '#/components/schemas/LedgerEntry' }
+        events:
+          type: array
+          description: Audit trail, oldest first.
+          items: { $ref: '#/components/schemas/ContractEvent' }
+        dispute:
+          oneOf:
+            - $ref: '#/components/schemas/Dispute'
+            - type: 'null'
+        notes:
+          type: array
+          description: The drafter's notes from creation.
+          items: { type: string }
+        viewer:
+          type: object
+          required: [role]
+          properties:
+            role: { $ref: '#/components/schemas/Party' }
+        allowed_actions:
+          type: array
+          description: What the acting party can do right now; the matching request enforces the same rule.
+          items: { $ref: '#/components/schemas/AllowedAction' }
+        verification:
+          oneOf:
+            - $ref: '#/components/schemas/VerificationStatus'
+            - type: 'null'
+        activity: { $ref: '#/components/schemas/ActivityStatus' }
+        payout:
+          oneOf:
+            - $ref: '#/components/schemas/PayoutStatus'
+            - type: 'null'
+        terms_sha256:
+          description: SHA-256 of the canonical agreed terms, fixed at signing; null while DRAFT.
+          oneOf:
+            - $ref: '#/components/schemas/Sha256Hex'
+            - type: 'null'
+        receipt:
+          oneOf:
+            - $ref: '#/components/schemas/SignedReceipt'
+            - type: 'null'
+
+    ReceiptVerdict:
+      type: object
+      required: [verdict_id, condition_id, check_kind, outcome, confidence, reasoning_sha256, evidence_sha256, screenshots]
+      properties:
+        verdict_id: { type: string }
+        condition_id: { type: string }
+        check_kind: { $ref: '#/components/schemas/CheckKind' }
+        outcome:
+          type: string
+          enum: [pass, fail, inconclusive]
+        confidence: { type: number }
+        reasoning_sha256: { $ref: '#/components/schemas/Sha256Hex' }
+        evidence_sha256: { $ref: '#/components/schemas/Sha256Hex' }
+        screenshots:
+          type: array
+          items:
+            type: object
+            required: [path, sha256]
+            properties:
+              path: { type: string }
+              sha256:
+                oneOf:
+                  - $ref: '#/components/schemas/Sha256Hex'
+                  - type: 'null'
+    ReceiptBody:
+      type: object
+      required: [schema, contract_id, submission_id, submitted_url, terms_sha256, outcome, verdicts, verifier, started_at, finished_at, issued_at]
+      properties:
+        schema: { const: proviso.receipt/1 }
+        contract_id: { type: string }
+        submission_id: { type: string }
+        submitted_url: { type: string }
+        terms_sha256:
+          oneOf:
+            - $ref: '#/components/schemas/Sha256Hex'
+            - type: 'null'
+        outcome:
+          type: string
+          enum: [passed, failed, inconclusive]
+        verdicts:
+          type: array
+          description: Condition order.
+          items: { $ref: '#/components/schemas/ReceiptVerdict' }
+        verifier:
+          type: object
+          required: [name, version, model]
+          properties:
+            name: { type: string }
+            version: { type: string }
+            model: { type: string }
+        started_at: { $ref: '#/components/schemas/DateTime' }
+        finished_at: { $ref: '#/components/schemas/DateTime' }
+        issued_at: { $ref: '#/components/schemas/DateTime' }
+    SignedReceipt:
+      type: object
+      description: |
+        What the verifier verified, against what, and what it concluded,
+        signed with Ed25519. `receipt_sha256` is the SHA-256 of the canonical
+        JSON (keys sorted, no whitespace) of `receipt`; the signature is over
+        its 32 bytes. A record only: nothing reads it to move money.
+      required: [receipt, receipt_sha256, signature]
+      properties:
+        receipt: { $ref: '#/components/schemas/ReceiptBody' }
+        receipt_sha256: { $ref: '#/components/schemas/Sha256Hex' }
+        signature:
+          type: object
+          required: [algorithm, key_fingerprint, value]
+          properties:
+            algorithm: { const: Ed25519 }
+            key_fingerprint: { $ref: '#/components/schemas/Sha256Hex' }
+            value: { type: string, contentEncoding: base64 }
+    ContractReceipts:
+      type: object
+      required: [contract_id, terms_sha256, receipts]
+      properties:
+        contract_id: { type: string }
+        terms_sha256:
+          oneOf:
+            - $ref: '#/components/schemas/Sha256Hex'
+            - type: 'null'
+        receipts:
+          type: array
+          description: Newest first.
+          items: { $ref: '#/components/schemas/SignedReceipt' }
+    VerifierPublicKey:
+      type: object
+      required: [algorithm, public_key_pem, public_key_jwk, fingerprint]
+      properties:
+        algorithm: { const: Ed25519 }
+        public_key_pem: { type: string, description: SPKI PEM. }
+        public_key_jwk:
+          type: object
+          required: [kty, crv, x]
+          properties:
+            kty: { const: OKP }
+            crv: { const: Ed25519 }
+            x: { type: string }
+        fingerprint:
+          description: SHA-256 (hex) of the DER SPKI; receipts cite it as signature.key_fingerprint.
+          $ref: '#/components/schemas/Sha256Hex'
+    VerificationJob:
+      type: object
+      required: [submissionId]
+      properties:
+        submissionId: { type: string }
+
+    DraftBody:
+      type: object
+      required: [prompt]
+      properties:
+        prompt: { type: string, minLength: 1, maxLength: 4000, description: The deal in plain English (trimmed). }
+        type: { $ref: '#/components/schemas/ContractType' }
+    ProposedContract:
+      type: object
+      required: [title, type, amount_cents, currency, deadline_at, conditions, notes]
+      properties:
+        title: { type: string }
+        type: { $ref: '#/components/schemas/ContractType' }
+        amount_cents: { type: [integer, 'null'], description: null when the deal states no amount. }
+        currency: { type: [string, 'null'], description: ISO 4217; null when the deal names none. }
+        deadline_at: { type: [string, 'null'], format: date-time, description: null when the deal states no deadline. }
+        conditions:
+          type: array
+          items: { $ref: '#/components/schemas/ConditionInput' }
+        notes:
+          type: array
+          description: Where the drafter narrowed or interpreted a condition; show both parties before they sign.
+          items: { type: string }
+    VagueCondition:
+      type: object
+      required: [condition, reason, suggested_rewrite]
+      properties:
+        condition: { type: string }
+        reason: { type: string }
+        suggested_rewrite: { type: [string, 'null'] }
+    DraftResult:
+      oneOf:
+        - type: object
+          required: [kind, contract]
+          properties:
+            kind: { const: draft }
+            contract: { $ref: '#/components/schemas/ProposedContract' }
+        - type: object
+          required: [kind, vague_conditions]
+          properties:
+            kind: { const: refusal }
+            vague_conditions:
+              type: array
+              minItems: 1
+              items: { $ref: '#/components/schemas/VagueCondition' }
+    CreateContractBody:
+      type: object
+      required: [title, type, amount_cents, deadline_at, conditions]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        type: { $ref: '#/components/schemas/ContractType' }
+        amount_cents: { type: integer, minimum: 1, maximum: 500000, description: 'Integer cents; at most 500000 ($5,000.00).' }
+        currency:
+          type: [string, 'null']
+          pattern: '^\s*[Uu][Ss][Dd]\s*$'
+          description: Contracts are paid in US dollars only; USD when absent or null.
+        deadline_at: { type: string, format: date-time, description: With a zone offset; must be in the future. Stored in UTC. }
+        conditions:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { $ref: '#/components/schemas/ConditionInput' }
+        notes:
+          type: array
+          items: { type: string }
+    EditConditionsBody:
+      type: object
+      required: [conditions]
+      properties:
+        conditions:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { $ref: '#/components/schemas/ConditionInput' }
+    AuthorizeBody:
+      type: object
+      required: [orderId]
+      properties:
+        orderId: { type: string, minLength: 1, maxLength: 64 }
+    SubmitBody:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string, format: uri, pattern: '^https?://', description: 'The pull request URL (code_bounty) or the page URL (website_milestone). Must be public: private-network and localhost URLs fail verification.' }
+    ArgumentBody:
+      type: object
+      required: [argument]
+      properties:
+        argument: { type: string, minLength: 1, maxLength: 4000 }
+    AcceptBody:
+      type: object
+      properties:
+        accept: { type: boolean, default: true, description: false declines. }
+    AcceptResult:
+      type: object
+      required: [dispute, contract]
+      properties:
+        dispute: { $ref: '#/components/schemas/Dispute' }
+        contract: { $ref: '#/components/schemas/Contract' }
+    SweepResult:
+      type: object
+      required: [expired, settled, errors]
+      properties:
+        expired:
+          type: array
+          description: Contracts this sweep moved to EXPIRED.
+          items: { $ref: '#/components/schemas/Contract' }
+        settled:
+          type: array
+          description: Contracts this sweep moved to PAID or SETTLED.
+          items: { $ref: '#/components/schemas/Contract' }
+        errors:
+          type: array
+          items:
+            type: object
+            required: [contract_id, action, code, message]
+            properties:
+              contract_id: { type: string }
+              action:
+                type: string
+                enum: [expire, settle_pass, settle_split]
+              code: { type: string }
+              message: { type: string }

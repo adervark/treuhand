@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bloom &amp; Crumb Bakery</title>
+  <link rel="stylesheet" href="/_style.css">
+  <style>.gallery { width: 1100px; display: flex; gap: 12px; } .gallery div { flex: 0 0 350px; height: 120px; background: #e8cfb2; border-radius: 8px; }</style>
+</head>
+<body>
+  <header>
+    <h1 id="brand">Bloom &amp; Crumb Bakery</h1>
+    <nav><a href="#pricing">Plans</a><a href="#contact">Contact</a></nav>
+  </header>
+  <main>
+    <p>Fresh sourdough and seasonal cakes, baked every morning in Pune and delivered to your door.</p>
+    <div class="gallery"><div></div><div></div><div></div></div>
+    <section id="pricing">
+      <h2>Cake subscription plans</h2>
+      <div class="plans">
+        <div class="plan"><h3>Taster</h3><div class="price">$12 / month</div><p>One small cake every month.</p></div>
+        <div class="plan"><h3>Regular</h3><div class="price">$24 / month</div><p>Two cakes and a loaf every month.</p></div>
+        <div class="plan"><h3>Feast</h3><div class="price">$45 / month</div><p>A cake every week plus pastries.</p></div>
+      </div>
+    </section>
+    <section id="contact">
+      <h2>Contact us</h2>
+      <form id="contact-form" data-endpoint="/api/contact">
+        <label>Name <input name="name" id="name" required></label>
+        <label>Email <input name="email" id="email" type="email" required></label>
+        <label>Message <textarea name="message" id="message" rows="4" required></textarea></label>
+        <button type="submit">Send message</button>
+      </form>
+      <p id="form-status" role="status"></p>
+    </section>
+  </main>
+  <footer>Bloom &amp; Crumb, 12 Baker Lane</footer>
+  <script>
+    const form = document.getElementById("contact-form");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const status = document.getElementById("form-status");
+      const res = await fetch(form.dataset.endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+      status.textContent = res.ok ? "Thanks, we received your message." : "Something went wrong. Please try again.";
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bloom &amp; Crumb Bakery</title>
+  <link rel="stylesheet" href="/_style.css">
+  <style>.gallery { width: 1100px; display: flex; gap: 12px; } .gallery div { flex: 0 0 350px; height: 120px; background: #e8cfb2; border-radius: 8px; }</style>
+  <script>
+    // Lies to any script that reads or measures the page from the page's own JavaScript world:
+    // the body's text gains three plans that are not on screen, and nothing seems wider than the window.
+    (() => {
+      const FAKE = "\nTaster $12 / month\nRegular $24 / month\nFeast $45 / month\n";
+      const innerText = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "innerText");
+      Object.defineProperty(HTMLElement.prototype, "innerText", {
+        configurable: true,
+        get() {
+          const real = innerText.get.call(this);
+          return this === document.body ? real + FAKE : real;
+        },
+      });
+      const clientWidth = Object.getOwnPropertyDescriptor(Element.prototype, "clientWidth");
+      const width = () => clientWidth.get.call(document.documentElement);
+      Object.defineProperty(window, "innerWidth", { configurable: true, get: width });
+      const scrollWidth = Object.getOwnPropertyDescriptor(Element.prototype, "scrollWidth");
+      Object.defineProperty(Element.prototype, "scrollWidth", {
+        configurable: true,
+        get() {
+          return Math.min(scrollWidth.get.call(this), width());
+        },
+      });
+      const rect = Element.prototype.getBoundingClientRect;
+      Element.prototype.getBoundingClientRect = function () {
+        const r = rect.call(this);
+        const left = Math.max(r.left, 0);
+        return new DOMRect(left, r.top, Math.max(0, Math.min(r.right, width()) - left), r.height);
+      };
+    })();
+  </script>
+</head>
+<body>
+  <header>
+    <h1 id="brand">Bloom &amp; Crumb Bakery</h1>
+    <nav><a href="#pricing">Plans</a><a href="#contact">Contact</a></nav>
+  </header>
+  <main>
+    <p>Fresh sourdough and seasonal cakes, baked every morning in Pune and delivered to your door.</p>
+    <div class="gallery"><div></div><div></div><div></div></div>
+    <section id="pricing">
+      <h2>Cake subscription plans</h2>
+      <p>Our subscription plans are coming soon. Sign up at the counter to hear first.</p>
+    </section>
+  </main>
+  <footer>Bloom &amp; Crumb, 12 Baker Lane</footer>
+</body>
+</html>

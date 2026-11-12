@@ -1,0 +1,15 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Georgia, "Times New Roman", serif; color: #2b2118; background: #fdf8f1; line-height: 1.5; }
+header { background: #7a3e1d; color: #fff8ee; padding: 20px 24px; }
+header h1 { margin: 0; font-size: 28px; }
+nav a { color: #ffe3c4; margin-right: 16px; text-decoration: none; }
+main { max-width: 960px; margin: 0 auto; padding: 24px; }
+h2 { color: #7a3e1d; }
+.plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+.plan { background: #fff; border: 2px solid #e8cfb2; border-radius: 10px; padding: 16px; }
+.plan h3 { margin: 0 0 4px; }
+.price { font-size: 28px; font-weight: bold; color: #7a3e1d; }
+form { display: grid; gap: 10px; max-width: 480px; }
+input, textarea { width: 100%; padding: 8px; font: inherit; border: 1px solid #c9a98a; border-radius: 6px; }
+button { background: #7a3e1d; color: #fff; border: 0; padding: 10px 16px; border-radius: 6px; font: inherit; cursor: pointer; }
+footer { padding: 24px; text-align: center; color: #8a7462; font-size: 14px; }

@@ -1,0 +1,537 @@
+@import "tailwindcss";
+
+/*
+ * Clause design tokens (docs/design.md). Every colour is semantic and is
+ * declared once with both themes side by side: light-dark(light, dark).
+ * The theme is the element's color-scheme: the OS preference by default,
+ * or the visitor's explicit choice via <html data-theme> (a cookie the
+ * server reads, so the first paint is already right).
+ *
+ * The idiom is a market-data terminal: flat neutral greys in steps
+ * (chrome, panel, strip, header bar), one saturated blue for selection
+ * and action, and colour otherwise only where it means something.
+ */
+:root {
+  color-scheme: light dark;
+
+  /* Ground and ink: chrome < panel < strip < header bar */
+  --paper: light-dark(#e6e7e9, #0b0b0c);
+  --surface: light-dark(#ffffff, #161617);
+  --surface-2: light-dark(#f4f4f5, #1e1e20);
+  --head: light-dark(#e9e9eb, #2c2c2e);
+  --inset: light-dark(#ffffff, #0f0f10);
+  --rule: light-dark(#dcdde0, #2a2a2c);
+  --rule-strong: light-dark(#c2c4c8, #454548);
+  --field: light-dark(#85888e, #6a6a6e);
+  --ink: light-dark(#141415, #e8e8e8);
+  --ink-2: light-dark(#3b3d42, #bdbdbd);
+  --ink-3: light-dark(#5f6268, #959595);
+
+  /* The one accent: selection, the active tab, the primary action, links */
+  --accent: light-dark(#1f3ce6, #8197ff);
+  --accent-fill: light-dark(#1f3ce6, #3d5afe);
+  --accent-on: #ffffff;
+
+  /* Money places and verdicts: text, solid fill, text on fill */
+  --held: light-dark(#955800, #f5a524);
+  --held-fill: light-dark(#955800, #f5a524);
+  --held-on: light-dark(#ffffff, #1a1100);
+  --paid: light-dark(#086f37, #3cc472);
+  --paid-fill: light-dark(#086f37, #3cc472);
+  --paid-on: light-dark(#ffffff, #00170a);
+  --returned: light-dark(#4a5a6d, #9eaabb);
+  --returned-fill: light-dark(#4a5a6d, #9eaabb);
+  --returned-on: light-dark(#ffffff, #0b1118);
+  --fail: light-dark(#c42828, #f86b70);
+  --fail-fill: light-dark(#c42828, #f86b70);
+  --fail-on: light-dark(#ffffff, #1c0302);
+  --alarm: light-dark(#c8102e, #ff5a5f);
+  --alarm-fill: #c8102e;
+  --alarm-on: #ffffff;
+  --inconclusive: light-dark(#6a3fd1, #ac94ff);
+  --inconclusive-fill: light-dark(#6a3fd1, #ac94ff);
+  --inconclusive-on: light-dark(#ffffff, #12082b);
+  --disputed: light-dark(#b04600, #ff8c42);
+  --disputed-fill: light-dark(#b04600, #ff8c42);
+  --disputed-on: light-dark(#ffffff, #1c0a00);
+
+  /* Voices */
+  --machine: light-dark(#00708a, #3fc5de);
+  --machine-fill: light-dark(#00708a, #3fc5de);
+  --machine-on: light-dark(#ffffff, #001a20);
+  --payer: light-dark(#0b62c4, #52a8ff);
+  --payer-fill: light-dark(#0b62c4, #1f6fd1);
+  --payer-on: #ffffff;
+  --worker: light-dark(#a81f72, #ec6fc2);
+  --worker-fill: light-dark(#a81f72, #a8287a);
+  --worker-on: #ffffff;
+
+  /* Tints for rows and bands, derived so both themes stay in step */
+  --held-soft: color-mix(in oklab, var(--held) 9%, var(--surface));
+  --paid-soft: color-mix(in oklab, var(--paid) 9%, var(--surface));
+  --returned-soft: color-mix(in oklab, var(--returned) 9%, var(--surface));
+  --fail-soft: color-mix(in oklab, var(--fail) 9%, var(--surface));
+  --alarm-soft: color-mix(in oklab, var(--alarm) 11%, var(--surface));
+  --inconclusive-soft: color-mix(in oklab, var(--inconclusive) 9%, var(--surface));
+  --disputed-soft: color-mix(in oklab, var(--disputed) 9%, var(--surface));
+  --machine-soft: color-mix(in oklab, var(--machine) 8%, var(--surface));
+  --payer-soft: color-mix(in oklab, var(--payer) 10%, var(--surface));
+  --worker-soft: color-mix(in oklab, var(--worker) 10%, var(--surface));
+  --accent-soft: color-mix(in oklab, var(--accent-fill) 14%, var(--surface));
+
+  --focus: var(--accent);
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-head: var(--head);
+  --color-accent: var(--accent);
+  --color-accent-fill: var(--accent-fill);
+  --color-accent-on: var(--accent-on);
+  --color-accent-soft: var(--accent-soft);
+  --color-inset: var(--inset);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-field: var(--field);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+
+  --color-held: var(--held);
+  --color-held-fill: var(--held-fill);
+  --color-held-on: var(--held-on);
+  --color-held-soft: var(--held-soft);
+  --color-paid: var(--paid);
+  --color-paid-fill: var(--paid-fill);
+  --color-paid-on: var(--paid-on);
+  --color-paid-soft: var(--paid-soft);
+  --color-returned: var(--returned);
+  --color-returned-fill: var(--returned-fill);
+  --color-returned-on: var(--returned-on);
+  --color-returned-soft: var(--returned-soft);
+  --color-fail: var(--fail);
+  --color-fail-fill: var(--fail-fill);
+  --color-fail-on: var(--fail-on);
+  --color-fail-soft: var(--fail-soft);
+  --color-alarm: var(--alarm);
+  --color-alarm-fill: var(--alarm-fill);
+  --color-alarm-on: var(--alarm-on);
+  --color-alarm-soft: var(--alarm-soft);
+  --color-inconclusive: var(--inconclusive);
+  --color-inconclusive-fill: var(--inconclusive-fill);
+  --color-inconclusive-on: var(--inconclusive-on);
+  --color-inconclusive-soft: var(--inconclusive-soft);
+  --color-disputed: var(--disputed);
+  --color-disputed-fill: var(--disputed-fill);
+  --color-disputed-on: var(--disputed-on);
+  --color-disputed-soft: var(--disputed-soft);
+  --color-machine: var(--machine);
+  --color-machine-fill: var(--machine-fill);
+  --color-machine-on: var(--machine-on);
+  --color-machine-soft: var(--machine-soft);
+  --color-payer: var(--payer);
+  --color-payer-fill: var(--payer-fill);
+  --color-payer-on: var(--payer-on);
+  --color-payer-soft: var(--payer-soft);
+  --color-worker: var(--worker);
+  --color-worker-fill: var(--worker-fill);
+  --color-worker-on: var(--worker-on);
+  --color-worker-soft: var(--worker-soft);
+  --color-focus: var(--focus);
+
+  /* Older names, kept so nothing that still uses them loses its colour. */
+  --color-money: var(--paid);
+  --color-money-strong: var(--paid);
+  --color-money-soft: var(--paid-soft);
+  --color-pass: var(--paid);
+  --color-pass-soft: var(--paid-soft);
+  --color-warn: var(--disputed);
+  --color-warn-soft: var(--disputed-soft);
+  --color-info: var(--machine);
+  --color-info-soft: var(--machine-soft);
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  --font-cond: var(--font-plex-sans), ui-sans-serif, sans-serif;
+
+  /* Square instruments: panels have no radius, controls and tags 2 px. */
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 0px;
+  --radius-xl: 2px;
+}
+
+/* Wide and ultrawide screens (docs/design.md, Density and grid): the shell is
+   fluid, and at these widths pages put more panels side by side. */
+@theme {
+  --breakpoint-3xl: 110rem;
+  --breakpoint-4xl: 150rem;
+}
+
+/* The shell around a page from 3xl: top bar 45 px, the page's 24 px top and
+   bottom padding, footer 42 px, plus 1 px of slack. Pages that fill the window
+   from 3xl (contract, ledger, contracts, home) are 100dvh minus this tall, so
+   the page never scrolls and their panels scroll inside themselves. */
+:root {
+  --shell-chrome: 8.5rem;
+}
+
+html {
+  background: var(--paper);
+}
+
+/* Ultrawide (4xl, 2400 px and up: 2560 x 1440, 3440 x 1440): every size in
+   the interface is in rem, so raising the root raises the type, the row
+   heights, the padding and the fixed columns together, by 1.125. Media queries
+   still measure in the browser's default 16 px, so the breakpoints stay put. */
+@media (min-width: 150rem) {
+  html {
+    font-size: 112.5%;
+  }
+}
+
+/* The home page's workspace (docs/design.md, Density and grid): from 4xl it is
+   drawn larger again, type, rows, controls and icons together, so its three
+   columns start under the header and reach down the window instead of sitting
+   in a short band. Only the home page: the shell and the other pages keep 4xl's
+   scale. */
+@media (min-width: 150rem) {
+  .home-scale {
+    zoom: 1.3;
+  }
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.42;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@layer components {
+/* Figures: the reading face with tabular, lining digits, so columns of money line up. */
+.tnum {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+/* Identifiers and raw machine output only (PayPal references, URLs, quoted page text). */
+.font-code,
+code,
+pre,
+kbd {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+/* The hero figure: the same face, a little heavier, never coloured for show. */
+.figure-hero {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Field and column labels: small, sentence case, quiet. */
+.eyebrow,
+.label {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--ink-3);
+}
+/* The title on a panel's header bar: the one place labels are set in capitals. */
+.panel-title {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.font-cond,
+.display {
+  font-stretch: 100%;
+}
+}
+
+/* The money flow scales its type and boxes with the room it is given, so on a
+   wide screen it grows instead of sitting small in a long band. Its grid is
+   inside an inline-size container; --fs multiplies every size in it. */
+.flow-grid {
+  --fs: 1;
+}
+@container (min-width: 80rem) {
+  .flow-grid {
+    --fs: 1.12;
+  }
+}
+@container (min-width: 96rem) {
+  .flow-grid {
+    --fs: 1.25;
+  }
+}
+@container (min-width: 120rem) {
+  .flow-grid {
+    --fs: 1.4;
+  }
+}
+
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--accent-fill) 35%, transparent);
+  color: var(--ink);
+}
+
+/* Scrollbars that belong to the instrument. */
+* {
+  scrollbar-color: var(--rule-strong) transparent;
+}
+
+/* A 2 px line in the viewer's role colour across the very top. */
+.role-band-payer {
+  box-shadow: inset 0 2px 0 var(--payer-fill);
+}
+.role-band-worker {
+  box-shadow: inset 0 2px 0 var(--worker-fill);
+}
+
+/* The alarm band: a flat red bar for manipulation attempts and nothing else. */
+.hazard {
+  background-color: var(--alarm-fill);
+}
+.hazard-edge {
+  background-color: var(--alarm-fill);
+}
+
+/* The verifier's "looking" sweep on a condition being checked. */
+@keyframes scan {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+.scanbar {
+  position: relative;
+  overflow: hidden;
+}
+.scanbar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--machine) 16%, transparent), transparent);
+  animation: scan 1.4s linear infinite;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 240ms var(--ease-out) both;
+}
+
+/* A verdict tag landing. */
+@keyframes stamp {
+  from {
+    opacity: 0;
+    transform: scale(1.12);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.stamp {
+  animation: stamp 180ms var(--ease-out) both;
+}
+
+/* Money moving along the route's connector. */
+@keyframes flow {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 24px 0;
+  }
+}
+.flow-line {
+  background-image: repeating-linear-gradient(90deg, currentColor 0 8px, transparent 8px 12px);
+  background-size: 24px 2px;
+  background-repeat: repeat-x;
+  background-position-y: center;
+  animation: flow 0.9s linear infinite;
+}
+
+/*
+ * The money flow (docs/design.md, "The money flow"). A leg money has just
+ * taken draws itself once from source to destination while a packet travels
+ * along it; the destination rings once as the money lands. A leg money is on
+ * right now (a payout PayPal has not confirmed) flows until it lands.
+ */
+@keyframes leg-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.leg-arrive {
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+}
+[data-playing] .leg-arrive {
+  animation: leg-draw 1100ms cubic-bezier(0.45, 0, 0.2, 1) var(--arrive-delay, 0ms) forwards;
+}
+@keyframes leg-flow {
+  to {
+    stroke-dashoffset: -13;
+  }
+}
+.leg-flow {
+  animation: leg-flow 0.9s linear infinite;
+}
+.packet {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  offset-rotate: 0deg;
+  offset-anchor: center;
+  pointer-events: none;
+  box-shadow: 0 0 0 3px var(--surface);
+}
+@keyframes packet-travel {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+.packet-once {
+  opacity: 0;
+}
+[data-playing] .packet-once {
+  animation: packet-travel 1100ms cubic-bezier(0.45, 0, 0.2, 1) var(--arrive-delay, 0ms) both;
+}
+.packet-loop {
+  animation: packet-travel 1.8s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+@keyframes node-arrive {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, currentColor 60%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 12px color-mix(in oklab, currentColor 0%, transparent);
+  }
+}
+[data-playing] .node-arrive {
+  animation: node-arrive 800ms var(--ease-out) var(--arrive-delay, 0ms) both;
+}
+.leg-label-arrive {
+  opacity: 0;
+}
+[data-playing] .leg-label-arrive {
+  animation: stamp 220ms var(--ease-out) var(--arrive-delay, 0ms) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .scanbar::after,
+  .packet {
+    display: none;
+  }
+  .leg-arrive {
+    stroke-dashoffset: 0;
+  }
+  .leg-label-arrive {
+    opacity: 1;
+  }
+}
+
+/* Native <details> with our own marker. */
+details > summary {
+  list-style: none;
+  cursor: pointer;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+details[open] > summary .chev {
+  transform: rotate(90deg);
+}
+
+dialog::backdrop {
+  background: color-mix(in oklab, #000 78%, transparent);
+}
+
+/* AG Grid: keep the grid's own focus and selection in our vocabulary. */
+.ledger-grid .ag-cell.cell-figure {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.ledger-grid .ag-row-pinned .ag-cell {
+  font-weight: 600;
+}

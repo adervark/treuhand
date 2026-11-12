@@ -1,0 +1,32 @@
+.env
+.env.local
+node_modules/
+.next/
+data/*.db*
+.omc/
+test-results/
+playwright-report/
+
+.env*
+!.env.example
+/out/
+/build
+/coverage
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+*.pem
+# MCP client configs can hold agent tokens (docs/agents.md)
+.mcp.json
+npm-debug.log*
+.pnpm-debug.log*
+.vercel
+data/evidence/
+data/
+
+# internal planning notes, not part of the published project
+STRATEGY.md
+IDEAS.md
+CLAUSE.md
+SPEC.md
+docs/lanes.md
