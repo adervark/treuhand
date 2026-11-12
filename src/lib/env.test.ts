@@ -120,7 +120,7 @@ describe("optional settings", () => {
       expect(githubPrComments()).toBe(false);
     }
     vi.stubEnv("CLAUSE_GITHUB_PR_COMMENTS", "sometimes");
-    expect(() => githubPrComments()).toThrow(/CLAUSE_GITHUB_PR_COMMENTS must be 1 or 0/);
+    expect(() => githubPrComments()).toThrow("CLAUSE_GITHUB_PR_COMMENTS is not recognised: use 1, true, yes or on to turn it on, or 0, false, no or off.");
   });
 
   it("the public app URL is only a real https origin, never localhost", () => {

@@ -341,9 +341,16 @@ Screenshots in a verdict's `evidence.screenshots` are stored paths such as
 and `GITHUB_TOKEN`). After a code bounty's run finishes (passed, failed or
 inconclusive; a crashed run posts nothing), its verdict is posted as a comment
 on the submitted pull request, only when the conditions name exactly one
-repository and the submission is a pull request in it. Later runs edit the same
-comment; if it was deleted, a new one is created. The comment never decides
-anything and never delays settlement. Each attempt adds one event:
+repository, the submission is a pull request in it, and the run's verifier
+fetched that pull request from GitHub with that repository as its base. One
+pull request per contract: once the verdict is on one, a run on another is not
+posted (a `GITHUB_COMMENT_FAILED` says so). Later runs edit the same comment;
+if it was deleted, a new one is created. The comment never decides anything
+and never delays settlement. On a pass it says "Payment: payout sent to the
+worker." only when the contract is `PAID`. The verifier's note in it is quoted
+in a code span with backticks and line breaks removed, so it cannot break out
+of the span; a zero-width space after every `@`, `#` and `://` is a second
+layer. Each attempt adds one event:
 `GITHUB_COMMENT_POSTED` (`detail`: `submission_id`, `pull_request` (the PR's
 URL), `comment_id`, `comment_url`, `action` `"created"` or `"updated"`) or
 `GITHUB_COMMENT_FAILED` (`detail`: `submission_id`, `pull_request` when known,

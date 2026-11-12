@@ -89,7 +89,8 @@ export function githubPrComments(): boolean {
   const raw = read("CLAUSE_GITHUB_PR_COMMENTS")?.toLowerCase();
   if (raw === undefined || ["0", "false", "no", "off"].includes(raw)) return false;
   if (["1", "true", "yes", "on"].includes(raw)) return true;
-  throw new Error(`CLAUSE_GITHUB_PR_COMMENTS must be 1 or 0 (or true/false, yes/no, on/off), got "${raw}"`);
+  // The value itself is not repeated: the message reaches the audit trail, and a secret may have been pasted here.
+  throw new Error("CLAUSE_GITHUB_PR_COMMENTS is not recognised: use 1, true, yes or on to turn it on, or 0, false, no or off.");
 }
 
 /**

@@ -13,7 +13,11 @@ import type { ConditionInput, Contract, Verdict } from "@/lib/types";
 import { withTempDb } from "@/test/helpers";
 import { createFromProposal, rerunVerification, submitWork } from "./service";
 import { buildCommentBody, commentMarker, inertText } from "./service-pr-comment";
-import { CONDITIONS, daysFromNow, fund, installPayPalFakes, newContract, seedIdentities, submitAndVerify, verifierAnswers } from "./service-testkit";
+import { listConditions } from "@/lib/db/conditions";
+import { getSubmission } from "@/lib/db/submissions";
+import { createVerdict } from "@/lib/db/verdicts";
+import { parsePullRequestUrl } from "@/lib/verifier/github";
+import { CONDITIONS, daysFromNow, fund, installPayPalFakes, newContract, seedIdentities, type FakeOutcome } from "./service-testkit";
 
 vi.mock("@/lib/paypal", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/paypal")>();
@@ -28,7 +32,10 @@ vi.mock("@/lib/paypal", async (importOriginal) => {
     refundCapture: vi.fn(),
   };
 });
-vi.mock("@/lib/verifier", () => ({ verifySubmission: vi.fn() }));
+vi.mock("@/lib/verifier", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/verifier")>()),
+  verifySubmission: vi.fn(),
+}));
 vi.mock("@/lib/ai/mediator", () => ({ proposeSplit: vi.fn() }));
 vi.mock("@/lib/ai/drafter", () => ({ draftContract: vi.fn() }));
 
@@ -41,7 +48,7 @@ const edit = (id: number) => `PATCH /repos/acme/app/issues/comments/${id}`;
 
 type Reply = { status: number; body?: unknown; headers?: Record<string, string> } | Error;
 let routes: Map<string, Reply[]>;
-let requests: { route: string; headers: Record<string, string>; body: string }[];
+let requests: { route: string; headers: Record<string, string>; body: string; redirect?: RequestRedirect }[];
 
 function route(key: string, ...replies: Reply[]) {
   routes.set(key, replies);
@@ -62,7 +69,7 @@ beforeEach(() => {
       const url = new URL(String(input));
       expect(url.origin).toBe("https://api.github.com");
       const key = `${init?.method ?? "GET"} ${url.pathname}`;
-      requests.push({ route: key, headers: { ...(init?.headers as Record<string, string>) }, body: String(init?.body ?? "") });
+      requests.push({ route: key, headers: { ...(init?.headers as Record<string, string>) }, body: String(init?.body ?? ""), redirect: init?.redirect });
       const queue = routes.get(key);
       if (!queue || queue.length === 0) return new Response('{"message":"Not Found"}', { status: 404 });
       const reply = queue.length > 1 ? queue.shift()! : queue[0];
@@ -95,6 +102,76 @@ async function fundedBounty(conditions: ConditionInput[] = CONDITIONS.code_bount
       });
   return fund(contract.id);
 }
+
+/**
+ * A fake verifier like the testkit's, whose GitHub verdicts carry the pull
+ * request excerpt the real checks attach once GitHub returned the PR (here:
+ * the submitted PR, based in its own repository).
+ */
+function fakeVerifier(outcome: FakeOutcome): void {
+  vi.mocked(verifier.verifySubmission).mockImplementation(async (submissionId) => {
+    const submission = getSubmission(submissionId)!;
+    const ref = parsePullRequestUrl(submission.url);
+    const pullRequest = ref ? { pull_request: { number: ref.number, base_repo: `${ref.owner}/${ref.repo}` } } : {};
+    const conditions = listConditions(submission.contract_id);
+    const verdicts = conditions.map((condition, i) => {
+      const result = outcome === "passed" || i > 0 ? "pass" : outcome === "failed" ? "fail" : "inconclusive";
+      return createVerdict({
+        submission_id: submissionId,
+        condition_id: condition.id,
+        passed: result === "pass",
+        confidence: result === "inconclusive" ? 0 : 1,
+        reasoning: `${outcome} check ${i}`,
+        evidence: { outcome: result, ...pullRequest },
+      });
+    });
+    return {
+      contractId: submission.contract_id,
+      submissionId,
+      verdicts,
+      allPassed: outcome === "passed",
+      outcome,
+      inconclusive: outcome === "inconclusive" ? [{ condition_id: conditions[0].id, reason: "GitHub did not answer." }] : [],
+    };
+  });
+}
+
+/** Submits `url` as the worker and runs the verification job to the end. */
+async function verifyPr(contractId: string, outcome: FakeOutcome, url = PR_URL): Promise<Contract> {
+  fakeVerifier(outcome);
+  await submitWork(contractId, "worker", url).run();
+  return getContract(contractId)!;
+}
+
+/** Submits `url` as the worker and runs the job with whatever verifier is installed. */
+async function submitToRealVerifier(contractId: string, url: string): Promise<Contract> {
+  await submitWork(contractId, "worker", url).run();
+  return getContract(contractId)!;
+}
+
+/** The real verifier, with GitHub's GET answers from `routes`. */
+async function useRealVerifier(): Promise<void> {
+  const actual = await vi.importActual<typeof import("@/lib/verifier")>("@/lib/verifier");
+  vi.mocked(verifier.verifySubmission).mockImplementation(actual.verifySubmission);
+}
+
+function pullRequest(baseRepo: string) {
+  return {
+    number: 7,
+    html_url: PR_URL,
+    state: "open",
+    title: "Add the exporter",
+    body: null,
+    merged: false,
+    merged_at: null,
+    merged_by: null,
+    user: { login: "worker" },
+    head: { sha: "abc1234def5678", ref: "feature", repo: { full_name: "worker/app" } },
+    base: { ref: "main", repo: { full_name: baseRepo, default_branch: "main" } },
+  };
+}
+
+const writes = () => requests.filter((r) => !r.route.startsWith("GET "));
 
 // ---------------------------------------------------------------------------
 // The escaper and the body
@@ -153,6 +230,15 @@ describe("inertText", () => {
     expect(out.endsWith("…")).toBe(true);
   });
 
+  it("leaves no lone surrogate (a UTF-16 cut in the middle of an emoji)", () => {
+    for (const lone of ["clipped \ud83d", "\ude00 start", "mid\ud83dle"]) {
+      const out = inertText(lone);
+      expect(out.isWellFormed()).toBe(true);
+      expect(out).toContain("�");
+    }
+    expect(inside(inertText("ok 😀"))).toBe("ok 😀");
+  });
+
   it("says (none) for empty text instead of an empty code span", () => {
     expect(inertText(" \n\u200b ")).toBe("(none)");
   });
@@ -189,7 +275,7 @@ describe("buildCommentBody", () => {
     expect(body).toContain("- Merged into the default branch after the contract was signed: **passed**");
     expect(body).toContain("- Every check on the latest commit passes: **passed**");
     expect(body).toContain("- References the contract's issue: **passed**");
-    expect(body).toContain("Payment: the worker has been paid.");
+    expect(body).toContain("Payment: payout sent to the worker.");
     expect(body).toContain(`Signed receipt: SHA-256 \`${receipt}\`, signed by the key with fingerprint \`${key}\`.`);
     expect(body).not.toContain("Open the contract");
   });
@@ -198,7 +284,7 @@ describe("buildCommentBody", () => {
     const base = { contractId: "c", conditions, receiptSha256: null, keyFingerprint: null, contractUrl: null };
     const passed = buildCommentBody({ ...base, outcome: "passed", verdicts: [], state: "PASSED" });
     expect(passed).toContain("Payment: not confirmed yet.");
-    expect(passed).not.toContain("has been paid");
+    expect(passed).not.toContain("payout sent");
     const failed = buildCommentBody({ ...base, outcome: "failed", verdicts: [verdict("c1", "fail", "no")], state: "FAILED" });
     expect(failed).not.toContain("Payment");
     expect(failed).toContain("3 of 3 conditions did not pass.");
@@ -256,7 +342,7 @@ describe("posting after a run", () => {
   it("is off by default: nothing is posted or recorded", async () => {
     vi.stubEnv("CLAUSE_GITHUB_PR_COMMENTS", "");
     const contract = await fundedBounty();
-    expect((await submitAndVerify(contract.id, "passed", PR_URL)).state).toBe("PAID");
+    expect((await verifyPr(contract.id, "passed", PR_URL)).state).toBe("PAID");
     expect(fetch).not.toHaveBeenCalled();
     expect(commentEvents(contract.id)).toEqual([]);
   });
@@ -267,17 +353,17 @@ describe("posting after a run", () => {
     route(edit(101), { status: 200, body: { id: 101 } });
     const contract = await fundedBounty();
 
-    expect((await submitAndVerify(contract.id, "failed", PR_URL)).state).toBe("FAILED");
+    expect((await verifyPr(contract.id, "failed", PR_URL)).state).toBe("FAILED");
     expect(requests.map((r) => r.route)).toEqual([CREATE]);
     expect(postedBody(0)).toContain("### Treuhand verification: did not pass");
     expect(postedBody(0)).toContain(`[Open the contract in Treuhand](https://treuhand.example/contracts/${contract.id})`);
 
-    expect((await submitAndVerify(contract.id, "passed", PR_URL)).state).toBe("PAID");
+    expect((await verifyPr(contract.id, "passed", PR_URL)).state).toBe("PAID");
     expect(requests.map((r) => r.route)).toEqual([CREATE, edit(101)]);
     const body = postedBody(1);
     expect(body.split("\n")[0]).toBe(commentMarker(contract.id));
     expect(body).toContain("### Treuhand verification: passed");
-    expect(body).toContain("Payment: the worker has been paid.");
+    expect(body).toContain("Payment: payout sent to the worker.");
     expect(body).toMatch(/Signed receipt: SHA-256 `[0-9a-f]{64}`, signed by the key with fingerprint `[0-9a-f]{64}`\./);
     for (const secret of ["payer@example.com", "worker@example.com", "Payer", "Worker", "$", "200.00", "ORDER-", "AUTH-", "CAP-", "BATCH-"]) {
       expect(body).not.toContain(secret);
@@ -305,8 +391,8 @@ describe("posting after a run", () => {
     route(CREATE, { status: 201, body: { id: 101 } }, { status: 201, body: { id: 202 } });
     route(edit(101), { status: 404, body: { message: "Not Found" } });
     const contract = await fundedBounty();
-    await submitAndVerify(contract.id, "failed", PR_URL);
-    await submitAndVerify(contract.id, "failed", PR_URL);
+    await verifyPr(contract.id, "failed", PR_URL);
+    await verifyPr(contract.id, "failed", PR_URL);
     expect(requests.map((r) => r.route)).toEqual([CREATE, edit(101), CREATE]);
     expect(commentEvents(contract.id).map((e) => [e.detail.action, e.detail.comment_id])).toEqual([
       ["created", 101],
@@ -314,7 +400,7 @@ describe("posting after a run", () => {
     ]);
     // The run after that edits the new one.
     route(edit(202), { status: 200, body: { id: 202 } });
-    await submitAndVerify(contract.id, "failed", PR_URL);
+    await verifyPr(contract.id, "failed", PR_URL);
     expect(requests.at(-1)!.route).toBe(edit(202));
   });
 
@@ -323,9 +409,9 @@ describe("posting after a run", () => {
     route(edit(5), { status: 200, body: { id: 5 } });
     vi.stubEnv("CLAUSE_CONTEST_WINDOW_SECONDS", "3600");
     const contract = await fundedBounty();
-    await submitAndVerify(contract.id, "inconclusive", PR_URL);
+    await verifyPr(contract.id, "inconclusive", PR_URL);
     expect(postedBody(0)).toContain("### Treuhand verification: undecided");
-    verifierAnswers("passed");
+    fakeVerifier("passed");
     await rerunVerification(contract.id, "payer").run();
     expect(getContract(contract.id)!.state).toBe("PASSED");
     expect(requests.map((r) => r.route)).toEqual([CREATE, edit(5)]);
@@ -335,9 +421,9 @@ describe("posting after a run", () => {
 
   it("posts nothing for a submission outside the contract's repository, or not a pull request", async () => {
     const contract = await fundedBounty();
-    await submitAndVerify(contract.id, "failed", "https://github.com/other/app/pull/7");
-    await submitAndVerify(contract.id, "failed", "https://github.com/acme/app/issues/7");
-    await submitAndVerify(contract.id, "failed", "https://example.com/acme/app/pull/7");
+    await verifyPr(contract.id, "failed", "https://github.com/other/app/pull/7");
+    await verifyPr(contract.id, "failed", "https://github.com/acme/app/issues/7");
+    await verifyPr(contract.id, "failed", "https://example.com/acme/app/pull/7");
     expect(fetch).not.toHaveBeenCalled();
     expect(commentEvents(contract.id)).toEqual([]);
   });
@@ -347,7 +433,7 @@ describe("posting after a run", () => {
       { text: "Merged", check_kind: "github_pr_merged", check_params: { repo: "acme/app" } },
       { text: "CI", check_kind: "github_checks_passed", check_params: { repo: "acme/other" } },
     ]);
-    await submitAndVerify(contract.id, "failed", PR_URL);
+    await verifyPr(contract.id, "failed", PR_URL);
     expect(fetch).not.toHaveBeenCalled();
     expect(commentEvents(contract.id)).toEqual([]);
   });
@@ -355,7 +441,7 @@ describe("posting after a run", () => {
   it("posts nothing for a website contract", async () => {
     const contract = newContract("website_milestone");
     await fund(contract.id);
-    await submitAndVerify(contract.id, "passed", PR_URL);
+    await verifyPr(contract.id, "passed", PR_URL);
     expect(fetch).not.toHaveBeenCalled();
     expect(commentEvents(contract.id)).toEqual([]);
   });
@@ -371,7 +457,7 @@ describe("posting after a run", () => {
   it("records once per run why nothing was posted when GITHUB_TOKEN is missing", async () => {
     vi.stubEnv("GITHUB_TOKEN", "");
     const contract = await fundedBounty();
-    await submitAndVerify(contract.id, "failed", PR_URL);
+    await verifyPr(contract.id, "failed", PR_URL);
     expect(fetch).not.toHaveBeenCalled();
     const events = commentEvents(contract.id);
     expect(events).toHaveLength(1);
@@ -384,7 +470,7 @@ describe("a GitHub failure", () => {
   it("leaves the outcome and settlement untouched and is recorded (one retry on 5xx)", async () => {
     route(CREATE, { status: 502 });
     const contract = await fundedBounty();
-    expect((await submitAndVerify(contract.id, "passed", PR_URL)).state).toBe("PAID");
+    expect((await verifyPr(contract.id, "passed", PR_URL)).state).toBe("PAID");
     expect(requests.map((r) => r.route)).toEqual([CREATE, CREATE]);
     expect(listLedgerEntries({ contract_id: contract.id }).map((e) => e.kind)).toEqual(["AUTHORIZED", "CAPTURED", "PAID_OUT"]);
     const kinds = listEvents(contract.id).map((e) => e.kind);
@@ -402,7 +488,7 @@ describe("a GitHub failure", () => {
   ])("HTTP %i is recorded without a retry", async (status, reason) => {
     route(CREATE, { status, body: { message: `token ${TOKEN} is bad` } });
     const contract = await fundedBounty();
-    expect((await submitAndVerify(contract.id, "failed", PR_URL)).state).toBe("FAILED");
+    expect((await verifyPr(contract.id, "failed", PR_URL)).state).toBe("FAILED");
     expect(requests).toHaveLength(1);
     expect(commentEvents(contract.id).map((e) => e.detail.reason)).toEqual([reason]);
   });
@@ -410,7 +496,7 @@ describe("a GitHub failure", () => {
   it("a network error is retried once, then recorded", async () => {
     route(CREATE, new TypeError(`fetch failed for ${TOKEN}`));
     const contract = await fundedBounty();
-    await submitAndVerify(contract.id, "failed", PR_URL);
+    await verifyPr(contract.id, "failed", PR_URL);
     expect(requests).toHaveLength(2);
     expect(commentEvents(contract.id).map((e) => e.detail.reason)).toEqual(["GitHub could not be reached."]);
   });
@@ -418,18 +504,75 @@ describe("a GitHub failure", () => {
   it("an answer without a comment id is a failure, not a stored comment", async () => {
     route(CREATE, { status: 201, body: { id: "101" } });
     const contract = await fundedBounty();
-    await submitAndVerify(contract.id, "failed", PR_URL);
+    await verifyPr(contract.id, "failed", PR_URL);
     expect(commentEvents(contract.id).map((e) => [e.kind, e.detail.reason])).toEqual([
       ["GITHUB_COMMENT_FAILED", "GitHub's answer did not include a comment id."],
     ]);
   });
 
   it("an unknown CLAUSE_GITHUB_PR_COMMENTS value is recorded, and the run stands", async () => {
-    vi.stubEnv("CLAUSE_GITHUB_PR_COMMENTS", "maybe");
+    vi.stubEnv("CLAUSE_GITHUB_PR_COMMENTS", "ghp_pasted_in_the_wrong_place");
     const contract = await fundedBounty();
-    expect((await submitAndVerify(contract.id, "passed", PR_URL)).state).toBe("PAID");
+    expect((await verifyPr(contract.id, "passed", PR_URL)).state).toBe("PAID");
     expect(fetch).not.toHaveBeenCalled();
-    expect(commentEvents(contract.id).map((e) => e.detail.reason)).toEqual([expect.stringContaining("CLAUSE_GITHUB_PR_COMMENTS must be")]);
+    expect(commentEvents(contract.id).map((e) => e.detail.reason)).toEqual([expect.stringContaining("CLAUSE_GITHUB_PR_COMMENTS is not recognised")]);
+    // The value itself is not repeated in the audit trail.
+    expect(JSON.stringify(listEvents(contract.id))).not.toContain("ghp_pasted");
+  });
+
+  it("a redirect is never followed", async () => {
+    route(CREATE, { status: 201, body: { id: 1 } });
+    const contract = await fundedBounty();
+    await verifyPr(contract.id, "failed", PR_URL);
+    expect(requests.map((r) => r.redirect)).toEqual(["error"]);
+  });
+});
+
+describe("only a pull request the verifier saw", () => {
+  it("posts nothing when GitHub has no pull request with that number (an issue, say)", async () => {
+    await useRealVerifier();
+    const contract = await fundedBounty();
+    expect((await submitToRealVerifier(contract.id, PR_URL)).state).toBe("FAILED");
+    expect(requests.map((r) => r.route)).toContain("GET /repos/acme/app/pulls/7");
+    expect(writes()).toEqual([]);
+    expect(commentEvents(contract.id)).toEqual([]);
+  });
+
+  it("posts nothing when GitHub says the pull request's base is another repository", async () => {
+    await useRealVerifier();
+    route("GET /repos/acme/app/pulls/7", { status: 200, body: pullRequest("other/app") });
+    const contract = await fundedBounty();
+    expect((await submitToRealVerifier(contract.id, PR_URL)).state).toBe("FAILED");
+    expect(writes()).toEqual([]);
+    expect(commentEvents(contract.id)).toEqual([]);
+  });
+
+  it("posts when the verifier fetched the pull request in the contract's repository", async () => {
+    await useRealVerifier();
+    route("GET /repos/acme/app/pulls/7", { status: 200, body: pullRequest("acme/app") });
+    route(CREATE, { status: 201, body: { id: 9 } });
+    const contract = await fundedBounty();
+    expect((await submitToRealVerifier(contract.id, PR_URL)).state).toBe("FAILED");
+    expect(writes().map((r) => r.route)).toEqual([CREATE]);
+    expect(commentEvents(contract.id).map((e) => e.kind)).toEqual(["GITHUB_COMMENT_POSTED"]);
+  });
+});
+
+describe("one pull request per contract", () => {
+  it("records, and does not post, a run on another pull request once the verdict is on one", async () => {
+    route(CREATE, { status: 201, body: { id: 3 } });
+    const contract = await fundedBounty();
+    await verifyPr(contract.id, "failed", PR_URL);
+    await verifyPr(contract.id, "failed", "https://github.com/acme/app/pull/8");
+    expect(requests.map((r) => r.route)).toEqual([CREATE]);
+    expect(commentEvents(contract.id).map((e) => [e.kind, e.detail.pull_request, e.detail.reason ?? null])).toEqual([
+      ["GITHUB_COMMENT_POSTED", PR_URL, null],
+      [
+        "GITHUB_COMMENT_FAILED",
+        "https://github.com/acme/app/pull/8",
+        "This contract's verdict is already posted on another pull request, so nothing was posted on this one.",
+      ],
+    ]);
   });
 });
 
@@ -438,8 +581,8 @@ describe("the token", () => {
     route(CREATE, { status: 201, body: { id: 1 } });
     route(edit(1), { status: 500, body: { message: TOKEN } });
     const contract = await fundedBounty();
-    await submitAndVerify(contract.id, "failed", PR_URL);
-    await submitAndVerify(contract.id, "failed", PR_URL);
+    await verifyPr(contract.id, "failed", PR_URL);
+    await verifyPr(contract.id, "failed", PR_URL);
     expect(commentEvents(contract.id).map((e) => e.kind)).toEqual(["GITHUB_COMMENT_POSTED", "GITHUB_COMMENT_FAILED"]);
     expect(JSON.stringify(listEvents(contract.id))).not.toContain(TOKEN);
     expect(JSON.stringify(listEvents(contract.id))).not.toContain("TESTTOKEN");

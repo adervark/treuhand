@@ -7,15 +7,18 @@
  * otherwise ignored.
  *
  * Only the contract's own pull request is commented on: a code bounty whose
- * GitHub conditions name exactly one repository, and a submission that is a
- * pull request in it. One comment per contract and pull request: the id of
- * the comment posted earlier comes from this contract's GITHUB_COMMENT_POSTED
+ * GitHub conditions name exactly one repository, a submission that is a pull
+ * request in it, and a run whose verifier fetched that pull request from
+ * GitHub with that base repository (so an issue number in a /pull/ URL is
+ * never commented on). One pull request per contract: once the verdict is on
+ * one, a submission of another is recorded as not posted. The id of the
+ * comment posted earlier comes from this contract's GITHUB_COMMENT_POSTED
  * events and later runs edit it (a new one is created if it was deleted).
  *
  * The body is built from fixed phrases. The one piece of text it quotes, each
  * verdict's reasoning, embeds what a submitter controls (PR titles, CI check
- * names), so `inertText` makes it unable to mention, reference, link or emit
- * HTML. Party names, emails, amounts and PayPal ids are never in it.
+ * names), so `inertText` quotes it in a code span it cannot break out of.
+ * Party names, emails, amounts and PayPal ids are never in it.
  */
 import { githubPrComments, githubToken, publicAppUrl } from "@/lib/env";
 import { listConditions } from "@/lib/db/conditions";
@@ -23,7 +26,7 @@ import { getContract } from "@/lib/db/contracts";
 import { listEvents, recordEvent } from "@/lib/db/events";
 import { listReceiptsForSubmission } from "@/lib/db/receipts";
 import { getSubmission } from "@/lib/db/submissions";
-import type { VerificationOutcome } from "@/lib/verifier";
+import { verdictOutcome, type VerificationOutcome } from "@/lib/verifier";
 import { GITHUB_API, GITHUB_TIMEOUT_MS, githubHeaders, parsePullRequestUrl, sameRepo, type PullRef } from "@/lib/verifier/github";
 import type { CheckKind, Condition, ContractState, Verdict } from "@/lib/types";
 import { errorMessage } from "./service-errors";
@@ -46,15 +49,19 @@ const SHA256_HEX = /^[0-9a-f]{64}$/;
 // ---------------------------------------------------------------------------
 
 /**
- * Makes untrusted text safe to quote in a comment, as an inline code span:
- * one line (no newline can end the span or start a block), no backticks (none
- * can close it), no `<` or `>`, and a zero-width space after every `@`, `#`
- * and `://`, so even outside the span it could not mention anyone, reference
- * an issue or pull request, or autolink. Control, zero-width and bidi
- * characters are dropped first, and the text is clipped to `max` characters.
+ * Makes untrusted text safe to quote in a comment by putting it in an inline
+ * code span, where GitHub creates no mentions, references, links, images or
+ * HTML. The span cannot be closed or broken out of: backticks are replaced
+ * and line breaks removed, so the text is one line with no backtick in it.
+ * As a second layer, `<` and `>` are replaced and a zero-width space follows
+ * every `@`, `#` and `://`; other things GitHub links outside code (`GH-123`,
+ * `www.` addresses, commit SHAs, `owner/repo@sha`) pass through unchanged and
+ * rely on the span alone. Lone surrogates become U+FFFD, control, zero-width
+ * and bidi characters are dropped, and the text is clipped to `max` characters.
  */
 export function inertText(raw: string, max = REASONING_MAX): string {
   const flat = raw
+    .toWellFormed()
     .normalize("NFKC")
     .replace(/[\p{Cc}\p{Cf}]/gu, " ")
     .replace(/\s+/g, " ")
@@ -110,7 +117,7 @@ export function buildCommentBody(input: {
   const byCondition = new Map(input.verdicts.map((v) => [v.condition_id, v]));
   const notPassed = input.conditions.filter((c) => {
     const v = byCondition.get(c.id);
-    return !v || (v.evidence.outcome ?? (v.passed ? "pass" : "fail")) !== "pass";
+    return !v || verdictOutcome(v) !== "pass";
   }).length;
   const summary =
     input.outcome === "passed"
@@ -133,14 +140,13 @@ export function buildCommentBody(input: {
       lines.push(`- ${phrase}: **not run**`);
       continue;
     }
-    const outcome = verdict.evidence.outcome ?? (verdict.passed ? "pass" : "fail");
-    lines.push(`- ${phrase}: **${VERDICT_WORD[outcome]}**`);
+    lines.push(`- ${phrase}: **${VERDICT_WORD[verdictOutcome(verdict)]}**`);
     // Only the GitHub checks' reasoning is quoted: it is about the pull request, never the parties or the money.
     if (CHECK_PHRASE[condition.check_kind]) lines.push(`  Verifier's note: ${inertText(verdict.reasoning)}`);
   }
   lines.push("");
   if (input.outcome === "passed") {
-    lines.push(input.state === "PAID" ? "Payment: the worker has been paid." : "Payment: not confirmed yet.");
+    lines.push(input.state === "PAID" ? "Payment: payout sent to the worker." : "Payment: not confirmed yet.");
   }
   if (input.receiptSha256 && SHA256_HEX.test(input.receiptSha256)) {
     const key = input.keyFingerprint && SHA256_HEX.test(input.keyFingerprint) ? `, signed by the key with fingerprint \`${input.keyFingerprint}\`` : "";
@@ -181,6 +187,8 @@ async function writeComment(method: "POST" | "PATCH", path: string, body: string
         method,
         headers,
         body: JSON.stringify({ body }),
+        // Only ever the exact path built here: a redirect is a failure, never followed.
+        redirect: "error",
         signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
       });
     } catch (err) {
@@ -195,6 +203,7 @@ async function writeComment(method: "POST" | "PATCH", path: string, body: string
       return { ok: false, status: res.status, reason: "GitHub's answer did not include a comment id." };
     }
     last = { ok: false, status: res.status, reason: refusal(res.status, res.headers.get("x-ratelimit-remaining") === "0") };
+    await res.body?.cancel().catch(() => {});
     if (res.status < 500) return last;
   }
   return last;
@@ -204,37 +213,57 @@ async function writeComment(method: "POST" | "PATCH", path: string, body: string
 // Posting
 // ---------------------------------------------------------------------------
 
-const GITHUB_KINDS = new Set<CheckKind>(["github_pr_merged", "github_checks_passed", "github_pr_references_issue"]);
 
 const pullRequestUrl = (ref: PullRef) => `https://github.com/${ref.owner}/${ref.repo}/pull/${ref.number}`;
 
-/** The pull request this run may comment on, or null: a code bounty, one repository, a PR in it. */
+/**
+ * Whether the verifier itself fetched pull request `number` from GitHub with
+ * `repo` as its base: a GitHub check attaches the PR's excerpt to its evidence
+ * only after GitHub returned it. Stored evidence is read defensively.
+ */
+function verifierSawPullRequest(verdicts: Verdict[], number: number, repo: string): boolean {
+  return verdicts.some((v) => {
+    const pr: unknown = (v.evidence as Record<string, unknown>).pull_request;
+    if (typeof pr !== "object" || pr === null) return false;
+    const { number: seen, base_repo: base } = pr as Record<string, unknown>;
+    return seen === number && typeof base === "string" && sameRepo(base, repo);
+  });
+}
+
+/**
+ * The pull request this run may comment on, or null: a code bounty, one
+ * repository, a submission that is a PR in it, and the verifier saw that PR.
+ */
 function targetOf(run: FinishedRun): { ref: PullRef; conditions: Condition[]; state: ContractState } | null {
   const contract = getContract(run.contractId);
   if (!contract || contract.type !== "code_bounty") return null;
   const conditions = listConditions(run.contractId);
   const repos = new Set(
     conditions
-      .filter((c) => GITHUB_KINDS.has(c.check_kind))
+      .filter((c) => CHECK_PHRASE[c.check_kind] !== undefined)
       .map((c) => String((c.check_params as { repo?: unknown }).repo ?? "").toLowerCase()),
   );
   if (repos.size !== 1) return null;
   const [repo] = repos;
   const ref = parsePullRequestUrl(getSubmission(run.submissionId)?.url ?? "");
   if (!repo || !ref || !sameRepo(`${ref.owner}/${ref.repo}`, repo)) return null;
+  if (!verifierSawPullRequest(run.verdicts, ref.number, repo)) return null;
   return { ref, conditions, state: contract.state };
 }
 
+const samePullRequest = (detail: Record<string, unknown>, prUrl: string) =>
+  typeof detail.pull_request === "string" && detail.pull_request.toLowerCase() === prUrl.toLowerCase();
+
 /** The comment this contract posted on this pull request before, from its own audit trail. */
 function earlierCommentId(contractId: string, prUrl: string): number | null {
-  const posted = listEvents(contractId).findLast(
-    (e) =>
-      e.kind === "GITHUB_COMMENT_POSTED" &&
-      typeof e.detail.pull_request === "string" &&
-      e.detail.pull_request.toLowerCase() === prUrl.toLowerCase(),
-  );
+  const posted = listEvents(contractId).findLast((e) => e.kind === "GITHUB_COMMENT_POSTED" && samePullRequest(e.detail, prUrl));
   const id = posted?.detail.comment_id;
   return typeof id === "number" && Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+/** Whether this contract's verdict is already on a different pull request (one pull request per contract). */
+function postedElsewhere(contractId: string, prUrl: string): boolean {
+  return listEvents(contractId).some((e) => e.kind === "GITHUB_COMMENT_POSTED" && !samePullRequest(e.detail, prUrl));
 }
 
 function recordCommentFailure(run: FinishedRun, prUrl: string | null, reason: string): void {
@@ -258,9 +287,21 @@ function recordCommentFailure(run: FinishedRun, prUrl: string | null, reason: st
 async function post(run: FinishedRun): Promise<void> {
   let prUrl: string | null = null;
   try {
+    // The setting first: with it unset or off, nothing is read and nothing is ever recorded.
+    let invalidSetting: unknown = null;
+    try {
+      if (!githubPrComments()) return;
+    } catch (err) {
+      invalidSetting = err;
+    }
     const target = targetOf(run);
-    if (!target || !githubPrComments()) return;
+    if (!target) return;
+    if (invalidSetting) throw invalidSetting;
     prUrl = pullRequestUrl(target.ref);
+    if (postedElsewhere(run.contractId, prUrl)) {
+      recordCommentFailure(run, prUrl, "This contract's verdict is already posted on another pull request, so nothing was posted on this one.");
+      return;
+    }
     const token = githubToken();
     if (!token) {
       recordCommentFailure(run, prUrl, "CLAUSE_GITHUB_PR_COMMENTS is on but GITHUB_TOKEN is not set, so nothing was posted.");
