@@ -1,0 +1,47 @@
+# Runs what the README's "Tests and evaluations" section runs locally:
+# typecheck, lint, the Vitest suite and a production build. No secrets are
+# needed: tests mock PayPal, GitHub and the model, and the website checks
+# drive a real headless Chromium against local fixture pages.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      # The pnpm version comes from package.json "packageManager".
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The verifier's browser and the system libraries it needs.
+      - run: pnpm exec playwright install --with-deps chromium
+
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+        env:
+          # Tests that open the default database write here, not into the checkout.
+          CLAUSE_DB_PATH: ${{ runner.temp }}/treuhand-ci.db
+      - run: pnpm build
