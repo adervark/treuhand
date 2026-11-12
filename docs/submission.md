@@ -112,7 +112,7 @@ next.js, react, typescript, tailwind-css, sqlite, better-sqlite3, playwright, ch
 
 ## Testing instructions for judges
 
-**Code:** `[REPO URL]`. "Quick start" in the README runs it locally (Node.js 22.13+, pnpm, a DeepSeek API key, and a PayPal sandbox app on a US business account).
+**Code:** https://github.com/adervark/treuhand. "Quick start" in the README runs it locally (Node.js 22.13+, pnpm, a DeepSeek API key, and a PayPal sandbox app on a US business account).
 
 **Hosted demo:** `[HOSTED URL]` (delete this paragraph if there is none). There is no sign-up: use the "Viewing as Payer / Worker" switch at the top right to act as either side. Every window of one browser acts as the same side, so use the switch in one window, or two browser profiles. To fund a contract, log in to the PayPal window with the sandbox payer: `[SANDBOX PAYER LOGIN]`. This is a PayPal sandbox account; no real money moves. Everyone using the demo shares the same two identities and sees the same contracts.
 
