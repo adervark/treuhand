@@ -31,6 +31,8 @@ import type { Party } from "@/lib/types";
 export { AGENT_SCOPES, type AgentScope, type AgentTokenRow } from "@/lib/db/agent-tokens";
 
 export const TOKEN_PREFIX = "treuhand_";
+/** Prefixes of tokens created under the product's earlier name. They stay valid; new tokens never use them. */
+export const EARLIER_TOKEN_PREFIXES = ["proviso_"] as const;
 
 /** SHA-256 (hex) of the token's UTF-8 bytes: what the database stores. */
 export function hashToken(token: string): string {
@@ -87,7 +89,7 @@ export function agentFromAuthorization(header: string | null | undefined): Agent
   const match = /^Bearer\s+(\S+)\s*$/i.exec(header.trim());
   if (!match) throw new AgentAuthError("UNAUTHORIZED", "The Authorization header must be `Bearer <agent token>`.");
   const token = match[1];
-  if (!token.startsWith(TOKEN_PREFIX)) {
+  if (![TOKEN_PREFIX, ...EARLIER_TOKEN_PREFIXES].some((prefix) => token.startsWith(prefix))) {
     throw new AgentAuthError("UNAUTHORIZED", `That is not a Treuhand agent token (they start with "${TOKEN_PREFIX}").`);
   }
   const row = findAgentTokenByHash(hashToken(token));

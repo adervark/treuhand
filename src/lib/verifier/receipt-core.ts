@@ -21,6 +21,15 @@ import { createHash, createPublicKey, verify, type KeyObject } from "node:crypto
 
 export const TERMS_SCHEMA = "treuhand.terms/1";
 export const RECEIPT_SCHEMA = "treuhand.receipt/1";
+/**
+ * The same two formats under the product's earlier name. Terms hashed and
+ * receipts signed before the rename carry these names, and they are checked
+ * exactly as the current ones are; nothing new is issued under them.
+ */
+export const EARLIER_TERMS_SCHEMAS = ["proviso.terms/1"] as const;
+export const EARLIER_RECEIPT_SCHEMAS = ["proviso.receipt/1"] as const;
+export type TermsSchema = typeof TERMS_SCHEMA | (typeof EARLIER_TERMS_SCHEMAS)[number];
+export type ReceiptSchema = typeof RECEIPT_SCHEMA | (typeof EARLIER_RECEIPT_SCHEMAS)[number];
 export const SIGNATURE_ALGORITHM = "Ed25519";
 
 // ---------------------------------------------------------------------------
@@ -86,10 +95,14 @@ export interface TermsSource {
   conditions: { position: number; text: string; check_kind: string; check_params: unknown }[];
 }
 
-/** What both parties agreed, as the object whose canonical JSON is hashed. */
-export function canonicalTerms({ contract, conditions }: TermsSource) {
+/**
+ * What both parties agreed, as the object whose canonical JSON is hashed.
+ * `schema` is the current name unless the caller is checking terms hashed
+ * under an earlier one.
+ */
+export function canonicalTerms({ contract, conditions }: TermsSource, schema: TermsSchema = TERMS_SCHEMA) {
   return {
-    schema: TERMS_SCHEMA,
+    schema,
     contract_id: contract.id,
     type: contract.type,
     payer_email: contract.payer_email,
@@ -103,8 +116,8 @@ export function canonicalTerms({ contract, conditions }: TermsSource) {
   };
 }
 
-export function termsSha256(source: TermsSource): string {
-  return sha256Hex(canonicalJson(canonicalTerms(source)));
+export function termsSha256(source: TermsSource, schema: TermsSchema = TERMS_SCHEMA): string {
+  return sha256Hex(canonicalJson(canonicalTerms(source, schema)));
 }
 
 // ---------------------------------------------------------------------------
@@ -126,7 +139,8 @@ export interface ReceiptVerdict {
 }
 
 export interface ReceiptBody {
-  schema: typeof RECEIPT_SCHEMA;
+  /** `RECEIPT_SCHEMA` on every receipt issued now; an earlier name on receipts signed before the rename. */
+  schema: ReceiptSchema;
   contract_id: string;
   submission_id: string;
   submitted_url: string;
@@ -184,7 +198,10 @@ function shapeProblem(value: unknown): string | null {
   if (!value || typeof value !== "object") return "not a JSON object";
   const signed = value as Partial<SignedReceipt>;
   if (!signed.receipt || typeof signed.receipt !== "object") return "no `receipt` object";
-  if (signed.receipt.schema !== RECEIPT_SCHEMA) return `receipt.schema is not "${RECEIPT_SCHEMA}"`;
+  const schemas: readonly string[] = [RECEIPT_SCHEMA, ...EARLIER_RECEIPT_SCHEMAS];
+  if (typeof signed.receipt.schema !== "string" || !schemas.includes(signed.receipt.schema)) {
+    return `receipt.schema is not "${RECEIPT_SCHEMA}"`;
+  }
   if (!Array.isArray(signed.receipt.verdicts)) return "receipt.verdicts is not an array";
   if (typeof signed.receipt_sha256 !== "string" || !HEX64.test(signed.receipt_sha256)) return "receipt_sha256 is not 64 hex digits";
   const sig = signed.signature;
@@ -250,11 +267,19 @@ export function checkReceipt(value: unknown, publicKeyPem: string, contract?: Co
     ok: sameContract,
     detail: sameContract ? receipt.contract_id : `receipt is for ${receipt.contract_id}, contract JSON is ${contract.contract.id}`,
   });
+  // The terms hash is fixed when the contract is signed, so a contract signed before the rename
+  // has its terms hashed under the earlier schema name: the same terms, the same encoding.
   const terms = termsSha256(contract);
+  const earlier = EARLIER_TERMS_SCHEMAS.find((schema) => termsSha256(contract, schema) === receipt.terms_sha256);
   checks.push({
     check: "terms hash",
-    ok: terms === receipt.terms_sha256,
-    detail: terms === receipt.terms_sha256 ? terms : `recomputed from the contract ${terms}, receipt says ${receipt.terms_sha256}`,
+    ok: terms === receipt.terms_sha256 || earlier !== undefined,
+    detail:
+      terms === receipt.terms_sha256
+        ? terms
+        : earlier !== undefined
+          ? `${receipt.terms_sha256} (terms hashed as "${earlier}", the format's earlier name)`
+          : `recomputed from the contract ${terms}, receipt says ${receipt.terms_sha256}`,
   });
 
   if (!contract.verdicts) return checks;

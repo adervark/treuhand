@@ -10,6 +10,7 @@
  *
  * TREUHAND_URL   the app's base URL (default http://localhost:3000)
  * TREUHAND_TOKEN an agent token from scripts/agent-token.ts (required)
+ * (PROVISO_URL and PROVISO_TOKEN, the earlier names, are read when these are not set.)
  *
  * stdout carries the MCP protocol; everything else goes to stderr. Imports
  * only the MCP SDK, so it runs from any working directory.
@@ -26,8 +27,8 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-const baseUrl = (process.env.TREUHAND_URL?.trim() || "http://localhost:3000").replace(/\/+$/, "");
-const token = process.env.TREUHAND_TOKEN?.trim();
+const baseUrl = (process.env.TREUHAND_URL?.trim() || process.env.PROVISO_URL?.trim() || "http://localhost:3000").replace(/\/+$/, "");
+const token = process.env.TREUHAND_TOKEN?.trim() || process.env.PROVISO_TOKEN?.trim();
 if (!token) fail("set TREUHAND_TOKEN to an agent token (create one with scripts/agent-token.ts).");
 
 let endpoint: URL;

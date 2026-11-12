@@ -1295,7 +1295,9 @@ components:
       type: object
       required: [schema, contract_id, submission_id, submitted_url, terms_sha256, outcome, verdicts, verifier, started_at, finished_at, issued_at]
       properties:
-        schema: { const: treuhand.receipt/1 }
+        schema:
+          description: "treuhand.receipt/1 on every receipt issued now. proviso.receipt/1 is the same format under the earlier product name, on receipts signed before the rename."
+          enum: [treuhand.receipt/1, proviso.receipt/1]
         contract_id: { type: string }
         submission_id: { type: string }
         submitted_url: { type: string }

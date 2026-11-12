@@ -401,6 +401,13 @@ receipt is a record only: nothing reads it to decide whether money moves.
 }
 ```
 
+**Earlier names.** The product was renamed on 12 Nov 2026. Terms hashed and
+receipts signed before that carry `proviso.terms/1` and `proviso.receipt/1`,
+which are the same two formats; the checker accepts them and reports a terms
+hash made under the earlier name as such. Nothing new is issued under them.
+Agent tokens that start with `proviso_` stay valid, and the stdio relay reads
+`PROVISO_URL` and `PROVISO_TOKEN` when the `TREUHAND_` ones are not set.
+
 **Canonical JSON** is JSON with object keys sorted by UTF-16 code unit (as RFC
 8785) and no whitespace; values are written as `JSON.stringify` writes them.
 **The terms hash** is the SHA-256 of the canonical JSON of

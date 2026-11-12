@@ -232,7 +232,7 @@ To try a code bounty instead, you need a repository you can merge into: the pull
 pnpm typecheck && pnpm lint && pnpm test && pnpm build
 ```
 
-`pnpm test` runs the Vitest suite (842 tests in 32 files on 12 Nov 2026): the state machine, every check kind (website checks against local fixture pages in a real Chromium), the network guard, the reviewer panel's rule, receipts and the checker's rules, agent tokens and the MCP tools, the PayPal module and webhook handling with PayPal's HTTP responses mocked, the GitHub checks with GitHub's responses mocked, the AI modules with a mocked client, and the HTTP routes. Point `CLAUSE_DB_PATH` at a scratch file when running it next to a database you care about.
+`pnpm test` runs the Vitest suite (844 tests in 32 files on 12 Nov 2026): the state machine, every check kind (website checks against local fixture pages in a real Chromium), the network guard, the reviewer panel's rule, receipts and the checker's rules, agent tokens and the MCP tools, the PayPal module and webhook handling with PayPal's HTTP responses mocked, the GitHub checks with GitHub's responses mocked, the AI modules with a mocked client, and the HTTP routes. Point `CLAUSE_DB_PATH` at a scratch file when running it next to a database you care about.
 
 Three scripts run against the real services and need `.env`:
 

@@ -92,6 +92,17 @@ describe("agentFromAuthorization", () => {
     }
   });
 
+  it("still accepts a token created under the product's earlier name, and no other prefix", () => {
+    // Only the hash is stored, so a token issued as `proviso_…` before the rename is in the table under that hash.
+    const { row } = createAgentToken({ role: "worker", label: "from before the rename" });
+    const earlier = "proviso_" + "A".repeat(43);
+    getDb().prepare(`UPDATE agent_tokens SET token_sha256 = ? WHERE id = ?`).run(hashToken(earlier), row.id);
+    expect(agentFromAuthorization(bearer(earlier))?.role).toBe("worker");
+    expect(TOKEN_PREFIX).toBe("treuhand_");
+    // The same secret under a prefix that was never issued is refused before any lookup.
+    expect(authError(() => agentFromAuthorization(bearer("other_" + "A".repeat(43)))).message).toMatch(/not a Treuhand agent token/);
+  });
+
   it("refuses a revoked token", () => {
     const { token, row } = createAgentToken({ role: "payer", allowSign: true });
     expect(agentFromAuthorization(bearer(token))?.role).toBe("payer");

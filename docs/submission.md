@@ -51,7 +51,7 @@ One Next.js 16 app in TypeScript, with SQLite through better-sqlite3 and Tailwin
 - **AI**: DeepSeek's `deepseek-flash` (DeepSeek-V4.1-Flash, which accepts images) through its OpenAI-compatible API with the `openai` npm package, as drafter, reviewer panel and mediator. Every reply is JSON validated with zod and retried with the problem spelled out if it does not fit.
 - **Verifier**: Playwright driving headless Chromium behind a local proxy that checks every connection the browser makes; GitHub's REST API for code bounties; receipts canonicalised as sorted-key JSON, hashed with SHA-256 and signed with Ed25519 from Node's built-in crypto.
 - **Agents**: the official MCP TypeScript SDK, served statelessly over Streamable HTTP at `/api/mcp`, with a stdio relay for clients that launch a local process. Tokens are random 256-bit secrets stored only as hashes. The plain HTTP API is described in an OpenAPI 3.1 file, ready for APIMatic to generate SDKs (none generated yet).
-- **Testing**: 842 Vitest tests, a browser QA pass that found 21 defects (19 fixed, one half-fixed, one cosmetic left open), and three scripts that run against the real services: an adversarial evaluation of the page judgement, an evaluation of the drafter and mediator, and a PayPal sandbox smoke test.
+- **Testing**: 844 Vitest tests, a browser QA pass that found 21 defects (19 fixed, one half-fixed, one cosmetic left open), and three scripts that run against the real services: an adversarial evaluation of the page judgement, an evaluation of the drafter and mediator, and a PayPal sandbox smoke test.
 
 We built it with Claude Code agents working in parallel lanes (money, AI, verifier, contract flow, interface, agents, QA) against a written spec, with people handling the accounts, the video and the submission.
 
@@ -74,7 +74,7 @@ We built it with Claude Code agents working in parallel lanes (money, AI, verifi
 - The drafter and mediator passed 21 of 21 real-model cases, including mediation cases with injected instructions from the worker, from the payer and inside page evidence.
 - Two AI agents completed a contract end to end through MCP, one over HTTP and one over stdio, with the real drafter and verifier, and the buyer's agent checked the receipt; the payer's PayPal approval stayed a human step.
 - Facts are decided by code; the model judges only the one thing code cannot.
-- 842 automated tests, a single state machine, and money steps that record each PayPal result, resume from the step that failed, and never send a second payout while the first is pending.
+- 844 automated tests, a single state machine, and money steps that record each PayPal result, resume from the step that failed, and never send a second payout while the first is pending.
 
 ### What we learned
 

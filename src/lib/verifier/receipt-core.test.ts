@@ -225,6 +225,31 @@ describe("checkReceipt", () => {
     expect(failed(checkReceipt(signBody(receiptBody()), publicKeyPem, reworded))).toEqual(["terms hash"]);
   });
 
+  it("a receipt signed before the rename still holds: the earlier schema names are the same formats", () => {
+    // Pinned with `printf '%s' '<the canonical terms, "schema":"proviso.terms/1">' | sha256sum`: the hash a contract signed before the rename stores.
+    const earlierTerms = "bba1e2a8a960c66a1627f84a0cd7bf8d5c0c9769251a4e42542bba8622601f9a";
+    expect(termsSha256(contractJson(), "proviso.terms/1")).toBe(earlierTerms);
+    expect(earlierTerms).not.toBe(termsSha256(contractJson()));
+
+    // Issued before the rename: the earlier receipt schema and the earlier terms hash.
+    const old = signBody({ ...receiptBody(), schema: "proviso.receipt/1", terms_sha256: earlierTerms });
+    const oldChecks = checkReceipt(old, publicKeyPem, contractJson());
+    expect(failed(oldChecks)).toEqual([]);
+    expect(receiptHolds(oldChecks)).toBe(true);
+    expect(oldChecks.find((c) => c.check === "terms hash")?.detail).toContain("proviso.terms/1");
+
+    // Issued after the rename for a contract signed before it: the current receipt schema, the stored earlier terms hash.
+    const mixed = signBody({ ...receiptBody(), terms_sha256: earlierTerms });
+    expect(receiptHolds(checkReceipt(mixed, publicKeyPem, contractJson()))).toBe(true);
+
+    // The earlier names excuse nothing else: changed terms still fail, and an unknown schema is not a receipt.
+    const changed = contractJson();
+    changed.contract.amount_cents = 1;
+    expect(failed(checkReceipt(old, publicKeyPem, changed))).toEqual(["terms hash"]);
+    const unknown = signBody({ ...receiptBody(), schema: "other.receipt/1" as ReceiptBody["schema"] });
+    expect(failed(checkReceipt(unknown, publicKeyPem, contractJson()))).toEqual(["receipt format"]);
+  });
+
   it("detects stored evidence or reasoning that differs from what was signed", () => {
     const json = contractJson();
     (json.verdicts![1].evidence as Record<string, unknown>).found = 1;
