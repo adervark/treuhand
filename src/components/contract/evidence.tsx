@@ -11,7 +11,8 @@ import { IconExternal, IconImage, IconShield, IconX } from "../icons";
 import { cx } from "../ui";
 
 /** Keys the checklist already shows elsewhere (the review panel draws `panel`), or that only mark the outcome. */
-const HIDDEN_KEYS = new Set(["screenshots", "responses", "inconclusive", "outcome", "manipulation", "panel"]);
+// `trace` is the signed copy of the check's steps; the work log (work-log.tsx) is its presentation.
+const HIDDEN_KEYS = new Set(["screenshots", "responses", "inconclusive", "outcome", "manipulation", "panel", "trace"]);
 
 /**
  * A screenshot reference the browser can load. The verifier stores paths

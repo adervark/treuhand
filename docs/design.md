@@ -448,6 +448,46 @@ like a failure: its colour is `--inconclusive`, not `--fail`. A test decided by 
 mark with "a fact, not a judgement" instead, so a fact and a judgement never
 look alike.
 
+**Work log.** Every step the verifier took while checking a test, under that
+test's row (`work-log-view.tsx`, derived in `work-log.ts` from `trace` on
+`GET /api/contracts/[id]`). One line per step in the order it started: the
+step's number, its kind as an outlined tag (Guard, Net, Browser, Measure, Shot,
+AI, Decide, Record), what the verifier did in its own words, up to four of its
+facts in small mono, a waterfall bar placed in proportion within the test's own
+window (its first step's start to its last step's end), and the duration right
+aligned in tabular figures ("340 ms", "4.2 s", "1:05"). Concurrent steps, the
+three reviewers asked at once, have bars that start together. Done bars are
+`--ink-3`; a running bar is `--machine` and grows while its time ticks in tenths
+of a second, measured against the server's clock (`trace.now`), never the
+viewer's. A failed step has a 2 px `--fail` edge, a ✕ and a red bar; a step that
+was still running when its run ended is cut off: `--inconclusive`, ?, "no end".
+While the test is being checked the log is open under "Verifier · work log";
+once the row has its outcome it folds under "Work log · 9 steps · 4.2 s · 1 failed
+step", closed, like the evidence record. Each line is a button that opens the
+step's full record: its number, kind, status, start time to the millisecond in
+the tape's format, duration in ms, and every fact as a label and a value, set as
+text because facts can come from the delivered page. The run's own steps
+(signing the receipt) are a "Run record" strip at the foot of the run log. The
+log never says more than the row: a queued test shows no steps, and a test still
+being checked (or its reviewers still voting) shows neither its decision steps
+nor any step's results; those appear when the row's outcome does. A verdict's
+signed copy of its steps (`evidence.trace`) is not repeated in the evidence
+record; the work log is its presentation.
+
+**Run telemetry.** One dense strip under the run log's headline and meter, for
+the chosen attempt, when it has steps: "Verifier" in `--machine` with the run's
+wall-clock time (ticking while it runs), the number of steps, how many are
+running and how many failed, then one toggle per kind that occurred with its
+count and summed step time ("3 AI reviewer calls 17.2 s"). Pressing a kind
+(`aria-pressed`, the accent's soft ground) lights that kind's steps in every
+work log with the accent's soft ground and edge, dims the rest, and opens the
+folded logs that contain it; pressing it again clears it. Under the toggles, a
+thin bar of the run's step time by kind in `--machine`, segments in the
+toggles' order, alternate segments lighter so neighbours read apart; concurrent
+steps each count their own time. "Copy work log (JSON)" copies the attempt's
+steps as the page shows them (results of tests still being checked left out)
+and says "copied" for a moment, like a hash.
+
 **Receipt.** What the verifier signed about the contract (`receipt-panel.tsx`),
 a panel under "Your move" ("Receipt · signed by the verifier · Ed25519"). A
 two-column list of labels in `--ink-3` and values: Terms (the terms
@@ -712,6 +752,9 @@ Motion says that something changed state. It never decorates.
 | The recap on a paid contract | The payout just landed | Stamps in, 180 ms, only when it appears with the page open |
 | The checking row | The verifier is working on this test | A scan line sweeps the row every 1.4 s |
 | A state chip while the verifier works | Submitted or verifying | Its dot's opacity pulses, 1.6 s |
+| A work-log step arriving | The verifier just started a step | The line rises in once (the run log's 240 ms rise), keyed by the step, so a poll does not replay it |
+| A running step's bar and time | The verifier is working on it now | The bar's width follows the server clock with a 100 ms linear transition and a faint `--machine` sweep (0.9 s loop); the time ticks in tenths of a second, once a second under reduced motion |
+| A kind pressed in the run telemetry | Shows which steps it lights | Line and segment opacity, 150 ms |
 | A money-flow leg being taken | Money just moved (section 7.4) | Leg draws and a packet travels, 1.1 s; the destination rings once, 0.8 s; legs play 1.2 s apart |
 | A payout PayPal has not confirmed | Money is on its way | Dashes flow along the leg, 0.9 s loop; a packet runs it every 1.8 s |
 | New ledger rows | A movement just landed | AG Grid cell flash in the `held` tint, 1 s |

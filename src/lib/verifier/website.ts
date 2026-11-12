@@ -4,12 +4,13 @@
  */
 import http from "node:http";
 import https from "node:https";
-import type { Locator } from "playwright";
+import type { Locator, Page } from "playwright";
 import type { CheckContext, CheckResult } from "./index";
 import { evaluateIsolated, targetUrl, withPage } from "./browser";
 import { saveScreenshot } from "./evidence";
 import { assertAllowedUrl, BlockedTargetError, guardedLookup, HostNotFoundError, resolvePublicHost } from "./net-guard";
 import { clip, describeError, fail, inconclusive, pass } from "./result";
+import { step } from "./trace";
 import { VISIBLE_TEXT_JS } from "./visible-text";
 
 const HTTP_TIMEOUT_MS = 15_000;
@@ -17,12 +18,22 @@ const MAX_REDIRECTS = 5;
 const USER_AGENT = "Mozilla/5.0 (compatible; ProvisoVerifier/1.0)";
 const SUCCESS_WAIT_MS = 10_000;
 
-async function screenshotEvidence(ctx: CheckContext, label: string, take: () => Promise<Buffer>): Promise<string[]> {
-  try {
-    return [await saveScreenshot(ctx, label, await take())];
-  } catch {
-    return [];
-  }
+async function screenshotEvidence(ctx: CheckContext, page: Page, label: string, take: () => Promise<Buffer>): Promise<string[]> {
+  return step(
+    "screenshot",
+    "Take an evidence screenshot",
+    async (h) => {
+      try {
+        const shot = await take();
+        h.detail({ bytes: shot.length });
+        return [await saveScreenshot(ctx, label, shot)];
+      } catch {
+        h.fail();
+        return [];
+      }
+    },
+    { viewport_width: page.viewportSize()?.width },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -62,12 +73,23 @@ function getOnce(url: URL): Promise<Hop> {
   });
 }
 
-async function followRedirects(start: URL): Promise<Hop[]> {
+async function followRedirects(start: URL, attempt: number): Promise<Hop[]> {
   const hops: Hop[] = [];
   let url = start;
   for (let i = 0; i <= MAX_REDIRECTS; i++) {
-    await resolvePublicHost(url.hostname); // IP literals skip `lookup`, so check every hop here too
-    const hop = await getOnce(url);
+    const target = url;
+    const label = i > 0 ? "Follow a redirect" : attempt > 1 ? "Request the page again" : "Request the page";
+    const hop = await step(
+      "network",
+      label,
+      async (h) => {
+        await resolvePublicHost(target.hostname); // IP literals skip `lookup`, so check every hop here too
+        const answer = await getOnce(target);
+        h.detail({ http_status: answer.status, ...(answer.content_type ? { content_type: answer.content_type } : {}) });
+        return answer;
+      },
+      { host: target.hostname, attempt, hop: i + 1 },
+    );
     hops.push(hop);
     if (hop.status < 300 || hop.status >= 400 || !hop.location) return hops;
     url = assertAllowedUrl(new URL(hop.location, url).href);
@@ -80,7 +102,7 @@ export async function checkHttpOk(ctx: CheckContext<"http_ok">): Promise<CheckRe
   const evidence = { url };
   let start: URL;
   try {
-    start = assertAllowedUrl(url);
+    start = await step("guard", "Check the address is allowed", () => assertAllowedUrl(url));
   } catch (error) {
     return fail(`The verifier will not visit this URL: ${(error as Error).message}`, evidence);
   }
@@ -91,7 +113,7 @@ export async function checkHttpOk(ctx: CheckContext<"http_ok">): Promise<CheckRe
     if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, 1_000));
     const started = Date.now();
     try {
-      const hops = await followRedirects(start);
+      const hops = await followRedirects(start, attempt);
       const final = hops.at(-1)!;
       const result = { ...evidence, responses: hops, final_url: final.url, http_status: final.status, duration_ms: Date.now() - started, attempts: attempt };
       if (final.status >= 200 && final.status < 300) {
@@ -233,12 +255,22 @@ export async function checkDomAssert(ctx: CheckContext<"dom_assert">): Promise<C
   const { selector, text } = ctx.params;
   const url = targetUrl(ctx.submission.url, ctx.params.path);
   return withPage(url, {}, { selector, ...(text ? { text } : {}) }, async ({ page, evidence }) => {
-    const found = await evaluateIsolated<
-      { invalid: string } | { count: number; elements: DomElement[]; hidden_text: { count: number; sample: { reason: string; text: string }[] } }
-    >(
-      page,
-      domAssertScript(selector, MAX_ELEMENTS),
-    );
+    const found = await step("measure", "Find the elements matching the selector", async (h) => {
+      const answer = await evaluateIsolated<
+        { invalid: string } | { count: number; elements: DomElement[]; hidden_text: { count: number; sample: { reason: string; text: string }[] } }
+      >(page, domAssertScript(selector, MAX_ELEMENTS));
+      if ("invalid" in answer) {
+        h.result({ selector_valid: false });
+      } else {
+        h.detail({ hidden_text_nodes: answer.hidden_text.count });
+        h.result({
+          matched: answer.count,
+          visible: answer.elements.filter((el) => el.hidden === null).length,
+          ...(text === undefined ? {} : { visible_with_text: answer.elements.filter((el) => el.hidden === null && normalize(el.text).includes(normalize(text))).length }),
+        });
+      }
+      return answer;
+    });
     if ("invalid" in found) {
       return fail(`The condition's selector "${selector}" is not valid, so it can never match; this needs the parties or a human.`, {
         ...evidence,
@@ -259,7 +291,7 @@ export async function checkDomAssert(ctx: CheckContext<"dom_assert">): Promise<C
 
     const box = firstMatch && !firstMatch.in_head ? firstMatch.box : null;
     let screenshots = box
-      ? await screenshotEvidence(ctx, "element", () =>
+      ? await screenshotEvidence(ctx, page, "element", () =>
           page.screenshot({
             type: "jpeg",
             quality: 75,
@@ -275,7 +307,7 @@ export async function checkDomAssert(ctx: CheckContext<"dom_assert">): Promise<C
         )
       : [];
     if (screenshots.length === 0) {
-      screenshots = await screenshotEvidence(ctx, "page", () => page.screenshot({ type: "jpeg", quality: 70, timeout: 10_000 }));
+      screenshots = await screenshotEvidence(ctx, page, "page", () => page.screenshot({ type: "jpeg", quality: 70, timeout: 10_000 }));
     }
     const observed = {
       ...evidence,
@@ -347,8 +379,22 @@ export async function checkResponsive(ctx: CheckContext<"responsive">): Promise<
   const url = targetUrl(ctx.submission.url, ctx.params.path);
   const viewport = { width, height: 812 };
   return withPage(url, { viewport, mobile: true }, { width }, async ({ page, evidence }) => {
-    const measure = await evaluateIsolated<OverflowMeasure>(page, overflowScript(width));
-    const screenshots = await screenshotEvidence(ctx, `${width}px`, () =>
+    const measure = await step(
+      "measure",
+      "Measure the page's layout at phone width",
+      async (h) => {
+        const measured = await evaluateIsolated<OverflowMeasure>(page, overflowScript(width));
+        h.result({
+          viewport_tag: /width\s*=\s*device-width/i.test(measured.viewport_meta ?? ""),
+          inner_width: measured.inner_width,
+          scroll_width: measured.scroll_width,
+          elements_sticking_out: measured.offenders.length,
+        });
+        return measured;
+      },
+      { viewport_width: width },
+    );
+    const screenshots = await screenshotEvidence(ctx, page, `${width}px`, () =>
       page.screenshot({ type: "jpeg", quality: 70, timeout: 10_000 }),
     );
     const observed = { ...evidence, screenshots, measurements: measure };
@@ -397,54 +443,82 @@ export async function checkFormSubmits(ctx: CheckContext<"form_submits">): Promi
       fail(reasoning, {
         ...evidence,
         ...extra,
-        screenshots: await screenshotEvidence(ctx, "page", () => page.screenshot({ type: "jpeg", quality: 70, timeout: 10_000 })),
+        screenshots: await screenshotEvidence(ctx, page, "page", () => page.screenshot({ type: "jpeg", quality: 70, timeout: 10_000 })),
       });
     const form = page.locator(form_selector).first();
-    let formCount: number;
-    try {
-      formCount = await page.locator(form_selector).count();
-    } catch (error) {
+    const located = await step("measure", "Find the form", async (h) => {
+      let count: number;
+      try {
+        count = await page.locator(form_selector).count();
+      } catch (error) {
+        h.result({ selector_valid: false });
+        h.fail();
+        return { error };
+      }
+      const visible = count > 0 && (await form.isVisible());
+      h.result({ forms_found: count, visible });
+      return { count, visible };
+    });
+    if ("error" in located) {
       return fail(`The condition's form selector "${form_selector}" is not valid; this needs the parties or a human.`, {
         ...evidence,
-        error: describeError(error),
+        error: describeError(located.error),
       });
     }
-    if (formCount === 0) return failWithPage(`No form matching "${form_selector}" is on the page.`);
-    if (!(await form.isVisible())) return failWithPage(`The form "${form_selector}" is on the page but not visible.`);
+    if (located.count === 0) return failWithPage(`No form matching "${form_selector}" is on the page.`);
+    if (!located.visible) return failWithPage(`The form "${form_selector}" is on the page but not visible.`);
 
     const filled: { selector: string; value: string; how: string }[] = [];
-    for (const [selector, value] of Object.entries(fields)) {
-      const inForm = form.locator(selector);
-      let field: Locator;
-      try {
-        field = (await inForm.count()) > 0 ? inForm.first() : page.locator(selector).first();
-        if ((await field.count()) === 0) return failWithPage(`The form has no field matching "${selector}".`, { filled });
-      } catch (error) {
-        return fail(`The field selector "${selector}" is not valid; this needs the parties or a human.`, {
-          ...evidence,
-          error: describeError(error),
-        });
-      }
-      const kind = await field.evaluate((el) => ({
-        tag: el.tagName.toLowerCase(),
-        type: (el.getAttribute("type") ?? "").toLowerCase(),
-      }));
-      try {
-        if (kind.tag === "select") {
-          await field.selectOption(value, { timeout: 5_000 });
-          filled.push({ selector, value, how: "selected" });
-        } else if (kind.tag === "input" && (kind.type === "checkbox" || kind.type === "radio")) {
-          if (TRUTHY.has(value.trim().toLowerCase())) await field.check({ timeout: 5_000 });
-          else await field.uncheck({ timeout: 5_000 });
-          filled.push({ selector, value, how: "checked" });
-        } else {
-          await field.fill(value, { timeout: 5_000 });
-          filled.push({ selector, value, how: "typed" });
+    // A problem is returned as a thunk so its screenshot is taken after this step has ended.
+    const fillProblem = await step(
+      "browser",
+      "Fill in the form's fields",
+      async (h): Promise<(() => Promise<CheckResult>) | null> => {
+        const stop = (problem: () => Promise<CheckResult>) => {
+          h.result({ filled: filled.length });
+          h.fail();
+          return problem;
+        };
+        for (const [selector, value] of Object.entries(fields)) {
+          const inForm = form.locator(selector);
+          let field: Locator;
+          try {
+            field = (await inForm.count()) > 0 ? inForm.first() : page.locator(selector).first();
+            if ((await field.count()) === 0) return stop(() => failWithPage(`The form has no field matching "${selector}".`, { filled }));
+          } catch (error) {
+            return stop(async () =>
+              fail(`The field selector "${selector}" is not valid; this needs the parties or a human.`, {
+                ...evidence,
+                error: describeError(error),
+              }),
+            );
+          }
+          const kind = await field.evaluate((el) => ({
+            tag: el.tagName.toLowerCase(),
+            type: (el.getAttribute("type") ?? "").toLowerCase(),
+          }));
+          try {
+            if (kind.tag === "select") {
+              await field.selectOption(value, { timeout: 5_000 });
+              filled.push({ selector, value, how: "selected" });
+            } else if (kind.tag === "input" && (kind.type === "checkbox" || kind.type === "radio")) {
+              if (TRUTHY.has(value.trim().toLowerCase())) await field.check({ timeout: 5_000 });
+              else await field.uncheck({ timeout: 5_000 });
+              filled.push({ selector, value, how: "checked" });
+            } else {
+              await field.fill(value, { timeout: 5_000 });
+              filled.push({ selector, value, how: "typed" });
+            }
+          } catch (error) {
+            return stop(() => failWithPage(`The field "${selector}" could not be filled in: ${describeError(error).message}`, { filled }));
+          }
         }
-      } catch (error) {
-        return failWithPage(`The field "${selector}" could not be filled in: ${describeError(error).message}`, { filled });
-      }
-    }
+        h.result({ filled: filled.length });
+        return null;
+      },
+      { fields: Object.keys(fields).length },
+    );
+    if (fillProblem) return fillProblem();
 
     const success = page.getByText(success_text);
     const before = await countVisible(success);
@@ -458,30 +532,48 @@ export async function checkFormSubmits(ctx: CheckContext<"form_submits">): Promi
     });
 
     const submitButton = form.locator('button[type="submit"], input[type="submit"], button:not([type])').first();
-    let how: string;
-    try {
-      if ((await submitButton.count()) > 0 && (await submitButton.isVisible())) {
-        await submitButton.click({ timeout: 5_000 });
-        how = "clicked the submit button";
-      } else {
+    const submitted = await step("browser", "Submit the form", async (h): Promise<{ how: string } | { problem: () => Promise<CheckResult> }> => {
+      try {
+        if ((await submitButton.count()) > 0 && (await submitButton.isVisible())) {
+          h.detail({ via: "submit button" });
+          await submitButton.click({ timeout: 5_000 });
+          return { how: "clicked the submit button" };
+        }
+        h.detail({ via: "form.requestSubmit()" });
         const isForm = await form.evaluate((el) => el instanceof HTMLFormElement);
-        if (!isForm) return failWithPage(`"${form_selector}" has no visible submit button and is not a <form>, so it cannot be submitted.`, { filled });
+        if (!isForm) {
+          h.fail();
+          return {
+            problem: () => failWithPage(`"${form_selector}" has no visible submit button and is not a <form>, so it cannot be submitted.`, { filled }),
+          };
+        }
         await form.evaluate((el) => (el as HTMLFormElement).requestSubmit());
-        how = "submitted the form (no visible submit button)";
+        return { how: "submitted the form (no visible submit button)" };
+      } catch (error) {
+        h.fail();
+        return { problem: () => failWithPage(`The form could not be submitted: ${describeError(error).message}`, { filled }) };
       }
-    } catch (error) {
-      return failWithPage(`The form could not be submitted: ${describeError(error).message}`, { filled });
-    }
+    });
+    if ("problem" in submitted) return submitted.problem();
+    const { how } = submitted;
 
-    const started = Date.now();
-    let after = before;
-    while (Date.now() - started < SUCCESS_WAIT_MS) {
-      after = await countVisible(success);
-      if (after > before) break;
-      await page.waitForTimeout(250);
-    }
-    const waitedMs = Date.now() - started;
-    const screenshots = await screenshotEvidence(ctx, "after-submit", () =>
+    const { after, waitedMs } = await step(
+      "measure",
+      "Wait for the success text to appear",
+      async (h) => {
+        const started = Date.now();
+        let seen = before;
+        while (Date.now() - started < SUCCESS_WAIT_MS) {
+          seen = await countVisible(success);
+          if (seen > before) break;
+          await page.waitForTimeout(250);
+        }
+        h.result({ appeared: seen > before, visible_before: before, visible_after: seen });
+        return { after: seen, waitedMs: Date.now() - started };
+      },
+      { limit_s: SUCCESS_WAIT_MS / 1000 },
+    );
+    const screenshots = await screenshotEvidence(ctx, page, "after-submit", () =>
       page.screenshot({ type: "jpeg", quality: 70, timeout: 10_000 }),
     );
     const observed = {

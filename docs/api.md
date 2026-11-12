@@ -166,7 +166,11 @@ the seeded identities, no sign-offs. Errors: `VALIDATION_ERROR`,
     "at": string
   },
   "terms_sha256": string | null,      // SHA-256 (hex) of the agreed terms, fixed at signing; null while DRAFT
-  "receipt": SignedReceipt | null     // the newest signed verification receipt (see "Verification receipts")
+  "receipt": SignedReceipt | null,    // the newest signed verification receipt (see "Verification receipts")
+  "trace": {                          // the verifier's work log (see "Work log" below)
+    "now": string,                    // the server's clock when this response was built
+    "steps": TraceStep[]              // every step of every submission's latest run: submissions oldest first, then seq
+  }
 }
 ```
 
@@ -223,6 +227,55 @@ to the worker.
 Poll this route while `contract.state` is `SUBMITTED` or `VERIFYING`, while
 `activity.in_progress` is not null, or while `payout.status` is not
 `"SUCCESS"` and the contract is not `SETTLED`. Errors: `NOT_FOUND`.
+
+#### Work log
+
+`trace.steps` lists what the verifier did, one step per action, written as it
+happens: a step is stored as `running` when it starts and updated when it
+ends, so polling this route during a run shows the run as far as it has got.
+Types are in `src/lib/verifier/trace-types.ts`.
+
+```jsonc
+// TraceStep
+{
+  "id": string,
+  "submission_id": string,
+  "condition_id": string | null,      // null for run-level steps (kind "record")
+  "seq": number,                      // 1-based order of starting within the submission's run
+  "kind": "guard" | "network" | "browser" | "measure" | "screenshot" | "model" | "decision" | "record",
+  "label": string,                    // a phrase written by the verifier's code, never text from the page
+  "status": "running" | "done" | "failed",
+  "started_at": string,               // ISO, server clock
+  "duration_ms": number | null,       // null while running
+  "detail": { [key: string]: string | number | boolean | null },  // neutral facts, safe to show mid-run
+  "result": { [key: string]: string | number | boolean | null }   // facts that reveal how the check ends
+}
+```
+
+- **`detail` and `result`.** `detail` holds neutral facts: host, HTTP status,
+  attempts, load time, bytes, viewport width, reviewer and model name, counts.
+  `result` holds anything that gives the check's outcome away: a reviewer's
+  vote and confidence, the panel's decision, whether an element or the success
+  text was found, the verdict. Show `result` only once that condition's
+  verdict is in `verdicts`. Values can come from the submitted page (strings
+  are clipped to 160 characters): render them as text, never as markup.
+- **`failed`** means the step threw (its message is in `result.error`), did
+  not do what it set out to (a page that did not load, a screenshot that
+  could not be taken), or was cut off: a step still running when its check hit
+  the time limit is ended as failed with `detail.cut_off: true`.
+- **Each check ends with a `decision` step** "Record the verdict" whose
+  `result` carries `outcome` (`"pass"`, `"fail"`, `"inconclusive"`),
+  `confidence` and, when inconclusive, `reason`. After the checks, one
+  run-level `record` step "Sign the verification receipt" (`detail`:
+  `algorithm`, `verdicts`, `issued`, and the first 12 hex digits of
+  `receipt_sha256`, or `problem`) records the receipt.
+- **A re-run replaces the log.** It clears that submission's steps along with
+  its verdicts, then starts again at `seq` 1.
+- **Covered by the receipt.** Each check's finished steps (its own and its
+  decision step) are copied into its verdict as `evidence.trace`, an array of
+  `{ seq, kind, label, status, started_at, duration_ms, detail, result }`,
+  before the verdict is stored, so the receipt's per-verdict
+  `evidence_sha256` covers the work log.
 
 ### `PATCH /api/contracts/[id]/conditions` (either party, DRAFT only)
 

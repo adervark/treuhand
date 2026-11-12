@@ -1152,7 +1152,7 @@ components:
         at: { $ref: '#/components/schemas/DateTime' }
     ContractDetail:
       type: object
-      required: [contract, conditions, submissions, verdicts, ledger, events, dispute, notes, viewer, allowed_actions, verification, activity, payout, terms_sha256, receipt]
+      required: [contract, conditions, submissions, verdicts, ledger, events, dispute, notes, viewer, allowed_actions, verification, activity, payout, terms_sha256, receipt, trace]
       properties:
         contract: { $ref: '#/components/schemas/Contract' }
         conditions:
@@ -1210,6 +1210,62 @@ components:
           oneOf:
             - $ref: '#/components/schemas/SignedReceipt'
             - type: 'null'
+        trace: { $ref: '#/components/schemas/ContractTrace' }
+
+    TraceFacts:
+      type: object
+      description: Small facts about a step. Values may come from the submitted page; render them as text, never as markup.
+      additionalProperties:
+        oneOf:
+          - type: string
+          - type: number
+          - type: boolean
+          - type: 'null'
+
+    TraceStep:
+      type: object
+      description: One thing the verifier did while checking a submission, written when it starts and updated when it ends.
+      required: [id, submission_id, condition_id, seq, kind, label, status, started_at, duration_ms, detail, result]
+      properties:
+        id: { type: string }
+        submission_id: { type: string }
+        condition_id:
+          description: The condition whose check did this; null for run-level steps (kind record).
+          oneOf:
+            - type: string
+            - type: 'null'
+        seq: { type: integer, minimum: 1, description: Order of starting within the submission's latest run. }
+        kind:
+          type: string
+          enum: [guard, network, browser, measure, screenshot, model, decision, record]
+        label: { type: string, description: A phrase written by the verifier's code, never text from the page. }
+        status:
+          type: string
+          enum: [running, done, failed]
+          description: failed when the step threw, did not do what it set out to, or was cut off (detail.cut_off) when its check hit its time limit.
+        started_at: { type: string, format: date-time }
+        duration_ms:
+          description: Null while running.
+          oneOf:
+            - type: integer
+            - type: 'null'
+        detail:
+          description: Neutral facts, safe to show while the check runs.
+          allOf: [{ $ref: '#/components/schemas/TraceFacts' }]
+        result:
+          description: Facts that reveal how the check ends (votes, decisions, the verdict); show them once the condition's verdict is in.
+          allOf: [{ $ref: '#/components/schemas/TraceFacts' }]
+
+    ContractTrace:
+      type: object
+      description: The verifier's work log. Each check's finished steps are also copied into its verdict as evidence.trace, which the receipt's evidence_sha256 covers.
+      required: [now, steps]
+      properties:
+        now: { type: string, format: date-time, description: The server's clock when the response was built. }
+        steps:
+          type: array
+          description: Every step of every submission's latest run, submissions oldest first, then seq. A re-run replaces that submission's steps.
+          items: { $ref: '#/components/schemas/TraceStep' }
 
     ReceiptVerdict:
       type: object

@@ -18,6 +18,8 @@ import { getDb } from "@/lib/db/index";
 import { createSubmission, getLatestSubmission } from "@/lib/db/submissions";
 import { verifySubmission, type VerificationOutcome, type VerificationResult } from "@/lib/verifier";
 import { issueReceipt } from "@/lib/verifier/receipt";
+import { SIGNATURE_ALGORITHM } from "@/lib/verifier/receipt-core";
+import { runWithTrace, step } from "@/lib/verifier/trace";
 import type { Party } from "@/lib/types";
 import { transition } from "./machine";
 import { acquireClaim, keepClaimAlive, releaseClaim, type Claim } from "./service-claims";
@@ -119,9 +121,10 @@ export function outcomeOf(result: VerificationResult): { outcome: VerificationOu
 
 /**
  * Issues the run's signed receipt (src/lib/verifier/receipt.ts) and returns
- * what the VERIFICATION_COMPLETED event records about it. Never throws: a
- * receipt is a record, not a gate, so if it cannot be issued the outcome
- * stands and the event says why there is no receipt.
+ * what the VERIFICATION_COMPLETED event records about it, recording the
+ * signing as a run-level step of the work log. Never throws: a receipt is a
+ * record, not a gate, so if it cannot be issued the outcome stands and the
+ * event says why there is no receipt.
  */
 async function receiptFor(
   submissionId: string,
@@ -129,13 +132,26 @@ async function receiptFor(
   result: VerificationResult,
   startedAt: Date,
 ): Promise<{ receipt_sha256: string } | { receipt_error: string }> {
-  try {
-    const signed = await issueReceipt({ submissionId, outcome, verdicts: result.verdicts, startedAt, finishedAt: new Date() });
-    return { receipt_sha256: signed.receipt_sha256 };
-  } catch (err) {
-    console.error(`the verification receipt for submission ${submissionId} could not be issued`, err);
-    return { receipt_error: errorMessage(err) };
-  }
+  const traced = await runWithTrace(submissionId, null, () =>
+    step(
+      "record",
+      "Sign the verification receipt",
+      async (h): Promise<{ receipt_sha256: string } | { receipt_error: string }> => {
+        try {
+          const signed = await issueReceipt({ submissionId, outcome, verdicts: result.verdicts, startedAt, finishedAt: new Date() });
+          h.detail({ receipt_sha256: signed.receipt_sha256.slice(0, 12), issued: true });
+          return { receipt_sha256: signed.receipt_sha256 };
+        } catch (err) {
+          console.error(`the verification receipt for submission ${submissionId} could not be issued`, err);
+          h.detail({ issued: false, problem: errorMessage(err) });
+          h.fail();
+          return { receipt_error: errorMessage(err) };
+        }
+      },
+      { algorithm: SIGNATURE_ALGORITHM, verdicts: result.verdicts.length },
+    ),
+  );
+  return traced.value;
 }
 
 function recordVerificationError(contractId: string, submissionId: string, err: unknown): void {

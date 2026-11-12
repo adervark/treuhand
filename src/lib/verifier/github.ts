@@ -12,6 +12,7 @@
 import { githubToken } from "@/lib/env";
 import type { CheckContext, CheckResult } from "./index";
 import { clip, describeError, fail, inconclusive, pass } from "./result";
+import { note, step, type StepHandle } from "./trace";
 
 const API = "https://api.github.com";
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -59,11 +60,27 @@ interface ApiCall {
   ms: number;
 }
 
+/** What a REST path asks for, for the work log (a phrase written here, never taken from the path). */
+function endpointOf(path: string): { endpoint: string; label: string } {
+  if (/\/pulls\/\d+$/.test(path)) return { endpoint: "pull request", label: "Fetch the pull request from GitHub" };
+  if (/\/check-runs\?/.test(path)) return { endpoint: "check runs", label: "Fetch the commit's check runs from GitHub" };
+  if (/\/status$/.test(path)) return { endpoint: "combined status", label: "Fetch the commit's combined status from GitHub" };
+  if (/\/check-suites\?/.test(path)) return { endpoint: "check suites", label: "Fetch the commit's check suites from GitHub" };
+  if (/\/timeline\?/.test(path)) return { endpoint: "issue timeline", label: "Fetch the issue's timeline from GitHub" };
+  return { endpoint: "other", label: "Call the GitHub API" };
+}
+
 class GitHubClient {
   readonly calls: ApiCall[] = [];
 
   /** GET a REST path. Returns null on 404/410; throws GitHubUnavailableError when GitHub cannot answer. */
-  async get<T>(path: string): Promise<T | null> {
+  get<T>(path: string): Promise<T | null> {
+    const { endpoint, label } = endpointOf(path);
+    const page = /[?&]page=(\d+)/.exec(path)?.[1];
+    return step("network", label, (h) => this.request<T>(path, h), { endpoint, ...(page ? { page: Number(page) } : {}) });
+  }
+
+  private async request<T>(path: string, h: StepHandle): Promise<T | null> {
     const headers: Record<string, string> = {
       accept: "application/vnd.github+json",
       "x-github-api-version": "2022-11-28",
@@ -81,14 +98,16 @@ class GitHubClient {
         res = await fetch(`${API}${path}`, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
       } catch (error) {
         this.calls.push({ request: `GET ${path}`, status: 0, ms: Date.now() - started });
+        h.detail({ attempts: attempt });
         lastError = error;
         continue;
       }
       this.calls.push({ request: `GET ${path}`, status: res.status, ms: Date.now() - started });
+      const remaining = res.headers.get("x-ratelimit-remaining");
+      h.detail({ http_status: res.status, attempts: attempt, ...(remaining !== null ? { rate_limit_remaining: Number(remaining) } : {}) });
       if (res.ok) return (await res.json()) as T;
       if (res.status === 404 || res.status === 410) return null;
       if (res.status === 403 || res.status === 429) {
-        const remaining = res.headers.get("x-ratelimit-remaining");
         const reset = Number(res.headers.get("x-ratelimit-reset"));
         const body = await res.text().catch(() => "");
         const limited = remaining === "0" || res.status === 429 || /rate limit/i.test(body);
@@ -155,6 +174,12 @@ async function locatePullRequest(ctx: CheckContext<"github_pr_merged" | "github_
   const repo = ctx.params.repo;
   const evidence = { submitted_url: ctx.submission.url, contract_repo: repo };
   const ref = parsePullRequestUrl(ctx.submission.url);
+  note(
+    "guard",
+    "Check the submission is a pull request in the contract's repository",
+    { contract_repo: repo },
+    { pull_request_url: ref !== null, same_repo: ref !== null && sameRepo(`${ref.owner}/${ref.repo}`, repo) },
+  );
   if (!ref) {
     return {
       ok: false,
@@ -231,6 +256,11 @@ export function checkGithubPrMerged(ctx: CheckContext<"github_pr_merged">): Prom
   return runGithubCheck(ctx, async (pr, ref, _gh, pulled) => {
     const signed = signedAt(ctx.contract);
     const evidence = { ...pulled, contract_signed_at: signed };
+    note("measure", "Compare the merge with the contract's terms", { signed_recorded: signed !== null }, {
+      merged: pr.merged && pr.merged_at !== null,
+      merged_after_signing: !!pr.merged_at && !!signed && Date.parse(pr.merged_at) >= Math.floor(Date.parse(signed) / 1000) * 1000,
+      into_default_branch: !!pr.base.repo.default_branch && pr.base.ref === pr.base.repo.default_branch,
+    });
     if (!pr.merged || !pr.merged_at) {
       return fail(`Pull request #${ref.number} is ${pr.state} and not merged.`, evidence);
     }
@@ -321,19 +351,25 @@ export function checkGithubChecksPassed(ctx: CheckContext<"github_checks_passed"
     const waiting = (r: (typeof runs)[number]) => r.status !== "completed" || WAITING_CONCLUSIONS.has(r.conclusion ?? "");
     const failedRuns = runs.filter((r) => !waiting(r) && !OK_CONCLUSIONS.has(r.conclusion ?? ""));
     const failedStatuses = statuses.filter((s) => s.state === "failure" || s.state === "error");
-    if (failedRuns.length + failedStatuses.length > 0) {
-      const names = [...failedRuns.map((r) => `${r.name} (${r.conclusion})`), ...failedStatuses.map((s) => `${s.context} (${s.state})`)];
-      return fail(`Checks did not pass on the PR's head commit ${pr.head.sha.slice(0, 7)}: ${names.slice(0, 5).join(", ")}.`, observed);
-    }
     const pending = [
       ...runs.filter(waiting).map((r) => (r.conclusion ? `${r.name} (${r.conclusion})` : r.name)),
       ...statuses.filter((s) => s.state === "pending").map((s) => s.context),
       ...waitingSuites.map((suite) => `${suite.app?.slug ?? "a"} check suite (${suite.conclusion})`),
     ];
+    const succeeded = runs.filter((r) => r.conclusion === "success").length + statuses.filter((s) => s.state === "success").length;
+    note(
+      "measure",
+      "Tally the checks on the head commit",
+      { check_runs: runs.length, statuses: statuses.length, waiting_suites: waitingSuites.length },
+      { failed: failedRuns.length + failedStatuses.length, pending: pending.length, succeeded },
+    );
+    if (failedRuns.length + failedStatuses.length > 0) {
+      const names = [...failedRuns.map((r) => `${r.name} (${r.conclusion})`), ...failedStatuses.map((s) => `${s.context} (${s.state})`)];
+      return fail(`Checks did not pass on the PR's head commit ${pr.head.sha.slice(0, 7)}: ${names.slice(0, 5).join(", ")}.`, observed);
+    }
     if (pending.length > 0) {
       return inconclusive(`Checks have not finished on ${pr.head.sha.slice(0, 7)} (${pending.slice(0, 5).join(", ")}); re-run verification when they have.`, observed);
     }
-    const succeeded = runs.filter((r) => r.conclusion === "success").length + statuses.filter((s) => s.state === "success").length;
     if (runs.length + statuses.length === 0) {
       return fail(`No checks ran on the PR's head commit ${pr.head.sha.slice(0, 7)}, so there is nothing that passed.`, observed);
     }
@@ -380,6 +416,10 @@ export function checkGithubPrReferencesIssue(ctx: CheckContext<"github_pr_refere
     const inTitle = findIssueReference(pr.title, repo, issue);
     const inBody = findIssueReference(pr.body ?? "", repo, issue);
     const found = inTitle ?? inBody;
+    note("measure", "Look for the issue reference in the pull request's title and description", { issue }, {
+      found: found !== null,
+      ...(found ? { where: inTitle ? "title" : "body", closing_keyword: found.closing } : {}),
+    });
     if (found) {
       return pass(
         `Pull request #${ref.number} references issue #${issue} in its ${inTitle ? "title" : "description"}` +

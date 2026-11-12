@@ -488,6 +488,17 @@ By a design agent. Browser checks ran on the scratch preview copy (`design-previ
 - Change (`src/components/contract/contract-view.tsx`): the card is wrapped so the column never shrinks it; the run log under it takes the rest of the height and scrolls as before.
 - Verified: "Event sign-up page for Riverside Run 10K" at 1920x1080 and 3440x1440: the whole card shows, percentages, reasoning and "Payer has not answered" / "Worker accepted" (`design6/pages2/dark-1920x1080-disputed.png`, `design6/pages2/crop-dispute-3440.png`).
 
+### Work log added (2026-11-12, evening)
+
+The verifier records each step of a run as it happens and the contract page shows it live (README, "The work log"; `docs/api.md`, "Work log"; `docs/design.md`, sections 6 and 8).
+
+- Change: `src/lib/verifier/trace.ts` (recorder), `trace-types.ts`, `src/lib/db/steps.ts` and migration 5 (`verification_steps`), steps emitted by every check runner and by receipt signing, `trace` on `GET /api/contracts/[id]`, each check's steps copied into `evidence.trace`; `src/components/contract/work-log.ts` and `work-log-view.tsx`, wired into the run log rows and header. The attempt switcher's tally for the latest run now follows the run log as it plays in, so it no longer counts a verdict before its row shows it.
+- Verified by commands: `pnpm typecheck`, `pnpm lint`, `pnpm test` (842 tests in 32 files), `pnpm build`.
+- Verified in a browser, seeded steps: Chromium at 390 px and 1440 px, light and dark, on a scratch database: a run in progress with three reviewers running at once, a passed run, and a run with a cut-off step; one step record opened; one kind pressed. No page errors, no sideways overflow.
+- Verified in a browser, real run: `next start` on a scratch copy of the fixture database with the real `.env`, a fixture contract's work resubmitted as `https://example.com/` (two tests pass, two fail by design, so no PayPal call is made). The run took about 8 s and recorded 27 steps, with the three reviewers' model calls overlapping. The page was photographed every second: steps appeared as they started, the reviewers' bars grew, and no vote, confidence or verdict text appeared in a test's live log before that test's row showed its verdict (checked by reading the live log's text in each frame). No page errors.
+- Not verified: a run that reaches the per-check time limit against a real slow site (covered by unit tests of the recorder only); a real GitHub pull request's work log in the browser (the GitHub steps are covered by tests with GitHub's responses mocked); screen readers.
+- Seen while testing, not a defect in the app: two `next dev` servers sharing one project directory made the second one's pages reload in a loop; a single fresh `next dev` serves the page normally.
+
 ## Not tested, and why
 
 - Buyer login and approval in PayPal's window, and everything that depends on a real hold (real authorize, capture, void, refund, payout): the hard boundary for this job. Reached through fixture contracts instead. So a real `EXPIRED`, `PAID` or `SETTLED` transition, payout polling and the 3-attempt payout retry were only seen on seeded fixture contracts (display) and in the service tests, not live.

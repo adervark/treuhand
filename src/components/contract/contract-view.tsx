@@ -31,6 +31,9 @@ import { Recap } from "./recap";
 import { StateRail } from "./state-rail";
 import { useStagedRows } from "./staged-rows";
 import { attemptTally, conditionRows, summarize, type ConditionRow, type Outcome } from "./verdicts";
+import { groupSteps, logPhase, visibleSteps, type LogPhase } from "./work-log";
+import { RunTelemetry, useServerNow, type WorkLogEnv } from "./work-log-view";
+import type { TraceStepKind } from "@/lib/contract/service";
 
 const FAST_POLL_MS = 1200;
 const SLOW_POLL_MS = 8000;
@@ -286,6 +289,7 @@ export function ContractView({ id, role, identities }: { id: string; role: Party
                 bundle={bundle}
                 selectedId={selected?.id ?? null}
                 staged={selected && selected.id === bundle.submissions[0]?.id ? reveal.rows : null}
+                latestRows={reveal.rows}
                 onSelect={setAttemptId}
               />
             )}
@@ -432,16 +436,25 @@ function SweepNote({ status }: { status: SweepStatus }) {
   );
 }
 
+/** Pass/fail tally of the rows as the run log shows them now (a verdict still held back or being voted on is not counted). */
+function rowTally(rows: ConditionRow[]): { passed: number; failed: number; other: number } {
+  const sum = summarize(rows.filter((r) => r.voting === undefined));
+  return { passed: sum.passed, failed: sum.failed, other: sum.inconclusive };
+}
+
 function TestsCard({
   bundle,
   selectedId,
   staged,
+  latestRows,
   onSelect,
 }: {
   bundle: ContractBundle;
   selectedId: string | null;
   /** The latest run's rows as they play in (staged-rows.ts), when that run is the one shown; the headline and meter follow them. */
   staged: ConditionRow[] | null;
+  /** The latest run's rows as they play in, whichever attempt is shown: the attempt switcher's tally for that run follows them. */
+  latestRows: ConditionRow[];
   onSelect: (id: string) => void;
 }) {
   const selected = bundle.submissions.find((s) => s.id === selectedId) ?? null;
@@ -462,6 +475,18 @@ function TestsCard({
 
   const manipulated = rows.filter((r) => r.verdict && r.voting === undefined && manipulationOf(r.verdict.evidence));
 
+  // The verifier's work log for this attempt (work-log.ts): live while its run is running, a record afterwards.
+  const live = selected !== null && bundle.verification?.status === "running" && bundle.verification.submission_id === selected.id;
+  const serverNow = useServerNow(bundle.trace.now, live);
+  const [filter, setFilter] = useState<TraceStepKind | null>(null);
+  const grouped = useMemo(() => (selected ? groupSteps(bundle.trace.steps, selected.id) : null), [bundle.trace.steps, selected]);
+  const phases = new Map<string, LogPhase>(rows.map((r) => [r.condition.id, logPhase(r)]));
+  const shownSteps = grouped ? visibleSteps(grouped, phases) : [];
+  const hasSteps = grouped !== null && (grouped.run.length > 0 || grouped.byCondition.size > 0);
+  // A kind filter only means something while that kind is on screen.
+  const activeFilter = filter !== null && shownSteps.some((s) => s.kind === filter) ? filter : null;
+  const env: WorkLogEnv = { serverNow, live, filter: activeFilter };
+
   return (
     <Card className="overflow-hidden 3xl:grow">
       <header className="border-b border-rule">
@@ -475,7 +500,8 @@ function TestsCard({
           {attempts.length > 1 ? (
             <div role="group" aria-label="Attempts" className="flex flex-wrap">
               {attempts.map((s, i) => {
-                const tally = attemptTally(bundle, s.id);
+                // The latest attempt's tally follows the run log as it plays in, so it never counts a verdict the log has not shown.
+                const tally = s.id === bundle.submissions[0]?.id ? rowTally(latestRows) : attemptTally(bundle, s.id);
                 const active = s.id === selected?.id;
                 return (
                   <button
@@ -516,6 +542,15 @@ function TestsCard({
             </a>
           ) : null}
         </div>
+        {selected && hasSteps ? (
+          <RunTelemetry
+            steps={shownSteps}
+            env={env}
+            onFilter={setFilter}
+            submissionId={selected.id}
+            redacted={[...phases.values()].some((p) => p !== "decided")}
+          />
+        ) : null}
       </header>
       {selected && !isLatest ? (
         <p className="border-b border-rule bg-disputed-soft px-4 py-2 text-[0.8rem] text-disputed">
@@ -533,7 +568,7 @@ function TestsCard({
           </Banner>
         </div>
       ) : null}
-      <Checklist rows={rows} submission={selected} receipt={bundle.receipt} />
+      <Checklist rows={rows} submission={selected} receipt={bundle.receipt} workLog={grouped && hasSteps ? { steps: grouped, env } : null} />
     </Card>
   );
 }

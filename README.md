@@ -68,6 +68,10 @@ pnpm exec tsx scripts/verify-receipt.ts http://localhost:3000/api/contracts/<id>
 
 It recomputes the receipt hash, checks the signature against the public key, recomputes the terms hash from the contract, compares each verdict's evidence and reasoning with the hashes the receipt signed, and downloads each screenshot and compares its hash. It imports only `receipt-core.ts`, which needs only `node:crypto`. A receipt proves that the record was not changed after it was signed. It does not prove that the verifier ran honestly: the signing key belongs to whoever runs the server. Settlement never reads a receipt; it is a record, not a gate.
 
+### The work log
+
+The verifier records every step it takes while it takes it (`src/lib/verifier/trace.ts`): checking that the address is public, starting the isolated browser, loading the page, each measurement and screenshot, each reviewer's model call, the verdict, and signing the receipt, each with its start time and duration. `GET /api/contracts/<id>` serves them as `trace`, so the contract page shows a run while it runs: a waterfall of steps under the test being checked with running timers, and a strip of run metrics (elapsed time, steps by kind, where the time went). Every step opens to its full record, pressing a kind in the metrics strip highlights that kind of step in every test, the log can be copied as JSON, and it stays on the page after the run. Facts that give away a result (a reviewer's vote, the verdict) are held back until the run log has shown that test's verdict. Each check's finished steps are copied into its verdict's evidence, so the signed receipt's evidence hash covers them. The recorder cannot change a verdict: if a step cannot be written, the failure is logged and the check carries on.
+
 ### How the verifier resists manipulation
 
 The person who submits the page is the person who gets paid if it passes, so everything the verifier reads from a submission is treated as hostile content, never as instructions.
@@ -226,7 +230,7 @@ To try a code bounty instead, you need a repository you can merge into: the pull
 pnpm typecheck && pnpm lint && pnpm test && pnpm build
 ```
 
-`pnpm test` runs the Vitest suite (805 tests in 29 files on 12 Nov 2026): the state machine, every check kind (website checks against local fixture pages in a real Chromium), the network guard, the reviewer panel's rule, receipts and the checker's rules, agent tokens and the MCP tools, the PayPal module and webhook handling with PayPal's HTTP responses mocked, the GitHub checks with GitHub's responses mocked, the AI modules with a mocked client, and the HTTP routes. Point `CLAUSE_DB_PATH` at a scratch file when running it next to a database you care about.
+`pnpm test` runs the Vitest suite (842 tests in 32 files on 12 Nov 2026): the state machine, every check kind (website checks against local fixture pages in a real Chromium), the network guard, the reviewer panel's rule, receipts and the checker's rules, agent tokens and the MCP tools, the PayPal module and webhook handling with PayPal's HTTP responses mocked, the GitHub checks with GitHub's responses mocked, the AI modules with a mocked client, and the HTTP routes. Point `CLAUSE_DB_PATH` at a scratch file when running it next to a database you care about.
 
 Three scripts run against the real services and need `.env`:
 

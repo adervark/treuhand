@@ -348,6 +348,32 @@ kbd {
   animation: scan 1.4s linear infinite;
 }
 
+/*
+ * The work log's waterfall (work-log-view.tsx). Bars are placed from the
+ * server's clock ten times a second while a run is live; the short linear
+ * transition makes a running bar grow, and the others give way as the check's
+ * window widens, instead of jumping. A running bar also carries a faint sweep
+ * in the verifier's colour, the same "working" signal as the scan line.
+ */
+.step-bar {
+  transition:
+    left 100ms linear,
+    width 100ms linear;
+}
+@keyframes step-sweep {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 12px 0;
+  }
+}
+.step-running {
+  background-image: repeating-linear-gradient(90deg, transparent 0 6px, color-mix(in oklab, var(--surface) 38%, transparent) 6px 9px, transparent 9px 12px);
+  background-size: 12px 100%;
+  animation: step-sweep 0.9s linear infinite;
+}
+
 @keyframes pulse-dot {
   0%,
   100% {
@@ -503,6 +529,9 @@ kbd {
   .scanbar::after,
   .packet {
     display: none;
+  }
+  .step-running {
+    background-image: none;
   }
   .leg-arrive {
     stroke-dashoffset: 0;

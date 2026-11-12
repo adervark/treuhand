@@ -32,7 +32,7 @@ describe("connection and schema", () => {
       .map((t) => t.name)
       .sort();
     expect(tables).toEqual(
-      ["agent_tokens", "conditions", "contracts", "disputes", "events", "identities", "ledger", "receipts", "submissions", "verdicts"].sort(),
+      ["agent_tokens", "conditions", "contracts", "disputes", "events", "identities", "ledger", "receipts", "submissions", "verdicts", "verification_steps"].sort(),
     );
     expect(db.pragma("user_version", { simple: true })).toBe(MIGRATIONS.length);
     expect(db.pragma("foreign_keys", { simple: true })).toBe(1);

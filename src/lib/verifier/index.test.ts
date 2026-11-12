@@ -7,6 +7,7 @@ import fs from "node:fs";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { websiteContractInput, withTempDb } from "@/test/helpers";
 import { createContract } from "@/lib/db/contracts";
+import { listStepsForSubmission } from "@/lib/db/steps";
 import { createSubmission } from "@/lib/db/submissions";
 import { listVerdictsForSubmission } from "@/lib/db/verdicts";
 import type { CheckKind, NewContractInput } from "@/lib/types";
@@ -22,6 +23,7 @@ import {
   type CheckResult,
 } from "./index";
 import { fail, inconclusive, pass } from "./result";
+import { note, step, toEvidenceTrace } from "./trace";
 
 withTempDb();
 
@@ -257,6 +259,86 @@ describe("verifySubmission", () => {
     expect(stored).toEqual(rerun.verdicts);
   });
 
+  it("records each check's work log as it runs and copies it into that verdict's evidence.trace", async () => {
+    const { submission } = setup();
+    let duringDom: string[] = [];
+    stub("http_ok", async () => {
+      await step("network", "Request the page", (h) => h.detail({ http_status: 200 }), { host: "bakery.example" });
+      return pass("HTTP 200", {});
+    });
+    stub("dom_assert", async () => {
+      duringDom = listStepsForSubmission(submission.id).map((s) => `${s.label}:${s.status}`);
+      note("measure", "Find the elements matching the selector", {}, { matched: 0 });
+      return fail("no form", {});
+    });
+    stub("responsive", inconclusive("reset", {}));
+    const result = await verifySubmission(submission.id);
+
+    expect(duringDom).toEqual(["Request the page:done", "Record the verdict:done"]);
+    const steps = listStepsForSubmission(submission.id);
+    expect(steps.map((s) => s.seq)).toEqual([1, 2, 3, 4, 5]);
+    for (const verdict of result.verdicts) {
+      expect(verdict.evidence.trace).toEqual(toEvidenceTrace(steps.filter((s) => s.condition_id === verdict.condition_id)));
+    }
+    expect(steps.map((s) => [s.condition_id, s.kind, s.label])).toEqual([
+      [result.verdicts[0].condition_id, "network", "Request the page"],
+      [result.verdicts[0].condition_id, "decision", "Record the verdict"],
+      [result.verdicts[1].condition_id, "measure", "Find the elements matching the selector"],
+      [result.verdicts[1].condition_id, "decision", "Record the verdict"],
+      [result.verdicts[2].condition_id, "decision", "Record the verdict"],
+    ]);
+    expect(steps[0]).toMatchObject({ status: "done", detail: { host: "bakery.example", http_status: 200 }, result: {} });
+    // The verdict is in `result` only, never in the label or the neutral detail.
+    expect(steps.filter((s) => s.kind === "decision").map((s) => [s.detail, s.result])).toEqual([
+      [{ check_kind: "http_ok" }, { outcome: "pass", confidence: 1 }],
+      [{ check_kind: "dom_assert" }, { outcome: "fail", confidence: 1 }],
+      [{ check_kind: "responsive" }, { outcome: "inconclusive", confidence: 0, reason: "reset" }],
+    ]);
+    expect(listVerdictsForSubmission(submission.id)).toEqual(result.verdicts);
+  });
+
+  it("a re-run replaces that submission's work log", async () => {
+    const { submission } = setup();
+    stub("http_ok", async () => {
+      note("network", "Request the page");
+      return pass("HTTP 200", {});
+    });
+    stub("dom_assert", pass("form", {}));
+    stub("responsive", pass("fits", {}));
+    await verifySubmission(submission.id);
+    const first = listStepsForSubmission(submission.id);
+    expect(first).toHaveLength(4);
+
+    stub("http_ok", pass("HTTP 200", {}));
+    const second = await verifySubmission(submission.id);
+    const steps = listStepsForSubmission(submission.id);
+    expect(steps.map((s) => [s.seq, s.label])).toEqual([
+      [1, "Record the verdict"],
+      [2, "Record the verdict"],
+      [3, "Record the verdict"],
+    ]);
+    expect(steps.map((s) => s.id)).not.toEqual(expect.arrayContaining([first[0].id]));
+    expect(second.verdicts[0].evidence.trace).toEqual(toEvidenceTrace(steps.slice(0, 1)));
+  });
+
+  it("a check stopped at its time limit records the limit, and its unfinished steps are cut off", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { submission } = setup();
+    stub("http_ok", () => step("browser", "Load the page", () => new Promise<CheckResult>(() => undefined)));
+    stub("dom_assert", pass("form", {}));
+    stub("responsive", pass("fits", {}));
+    const running = verifySubmission(submission.id);
+    await vi.advanceTimersByTimeAsync(60_000);
+    const result = await running;
+    const steps = listStepsForSubmission(submission.id).filter((s) => s.condition_id === result.verdicts[0].condition_id);
+    expect(steps.map((s) => [s.label, s.status, s.detail, s.result])).toEqual([
+      ["Load the page", "failed", { cut_off: true }, {}],
+      ["Stop the check at its time limit", "done", { limit_s: 60 }, { timed_out: true }],
+      ["Record the verdict", "done", { check_kind: "http_ok" }, { outcome: "inconclusive", confidence: 0, reason: "The check did not finish within 60 s." }],
+    ]);
+    expect(result.verdicts[0].evidence.trace).toEqual(toEvidenceTrace(steps));
+  });
+
   it("throws for a submission that does not exist or a contract with no conditions", async () => {
     await expect(verifySubmission("missing")).rejects.toThrow(/submission missing not found/);
     const { submission } = setup("https://bakery.example/", []);
@@ -310,6 +392,31 @@ describe("verifySubmission end to end (real browser, fixture server)", () => {
         ["form_submits", "pass", true, 1],
       ]);
       expect(stored[0].evidence).toMatchObject({ http_status: 200, final_url: `${server.url}/good.html` });
+
+      // The work log: every step finished, in the order the checks ran, and copied into each verdict.
+      const steps = listStepsForSubmission(submission.id);
+      expect(steps.every((s) => s.status === "done" && s.duration_ms !== null)).toBe(true);
+      const loadPage = ["Check the address is a public website", "Start an isolated browser behind the guard proxy", "Load the page"];
+      const labels = (i: number) => steps.filter((s) => s.condition_id === stored[i].condition_id).map((s) => s.label);
+      expect(labels(0)).toEqual(["Check the address is allowed", "Request the page", "Record the verdict"]);
+      expect(labels(1)).toEqual([...loadPage, "Find the elements matching the selector", "Take an evidence screenshot", "Record the verdict"]);
+      expect(labels(2)).toEqual([...loadPage, "Measure the page's layout at phone width", "Take an evidence screenshot", "Record the verdict"]);
+      expect(labels(3)).toEqual([
+        ...loadPage,
+        "Find the form",
+        "Fill in the form's fields",
+        "Submit the form",
+        "Wait for the success text to appear",
+        "Take an evidence screenshot",
+        "Record the verdict",
+      ]);
+      for (const verdict of stored) {
+        expect(verdict.evidence.trace).toEqual(toEvidenceTrace(steps.filter((s) => s.condition_id === verdict.condition_id)));
+      }
+      const load = steps.find((s) => s.label === "Load the page")!;
+      expect(load.detail).toMatchObject({ http_status: 200, attempts: 1, load_ms: expect.any(Number), host: expect.any(String) });
+      expect(steps.find((s) => s.label === "Take an evidence screenshot")!.detail).toMatchObject({ bytes: expect.any(Number), viewport_width: 1280 });
+      expect(steps.find((s) => s.label === "Find the form")!.result).toEqual({ forms_found: 1, visible: true });
       for (const verdict of stored.slice(1)) {
         const [shot] = verdict.evidence.screenshots as string[];
         expect(shot).toMatch(new RegExp(`^data/evidence/${submission.id}/${verdict.evidence.check_kind === "dom_assert" ? 1 : "\\d"}-[a-z_]+-[\\w-]+\\.jpg$`));

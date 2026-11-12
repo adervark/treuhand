@@ -15,6 +15,7 @@ import type { CheckResult } from "./index";
 import { startGuardProxy, type GuardProxy, type ProxyLogEntry } from "./guard-proxy";
 import { assertAllowedUrl, BlockedTargetError, HostNotFoundError, resolvePublicHost } from "./net-guard";
 import { describeError, fail, inconclusive } from "./result";
+import { note, step } from "./trace";
 
 export const NAVIGATION_TIMEOUT_MS = 20_000;
 const NETWORK_IDLE_WAIT_MS = 4_000;
@@ -197,8 +198,13 @@ export async function withPage(
 
   let url: URL;
   try {
-    url = assertAllowedUrl(rawUrl);
-    await resolvePublicHost(url.hostname);
+    url = await step("guard", "Check the address is a public website", async (h) => {
+      const allowed = assertAllowedUrl(rawUrl);
+      h.detail({ host: allowed.hostname });
+      const addresses = await resolvePublicHost(allowed.hostname);
+      h.detail({ addresses: addresses.length });
+      return allowed;
+    });
   } catch (error) {
     if (error instanceof BlockedTargetError) {
       return fail(`The verifier will not visit this URL: ${error.message}`, { ...evidence, refused: error.message });
@@ -219,9 +225,25 @@ export async function withPage(
     proxy.log.length > 0 ? { refused_or_failed_requests: proxy.log.slice(0, 10).map((e) => ({ ...e })) } : {};
 
   try {
-    const launched = await launch(proxy, options);
+    const viewport = options.viewport ?? DESKTOP_VIEWPORT;
+    const launched = await step("browser", "Start an isolated browser behind the guard proxy", () => launch(proxy, options), {
+      viewport_width: viewport.width,
+      viewport_height: viewport.height,
+      mobile: options.mobile ?? false,
+    });
     browser = launched.browser;
-    const loaded = await load(launched.context, url, proxy);
+    const loaded = await step("browser", "Load the page", async (h) => {
+      const outcome = await load(launched.context, url, proxy);
+      h.detail({ host: url.hostname, attempts: outcome.attempts });
+      if (outcome.ok) {
+        h.detail({ http_status: outcome.response.status(), final_host: hostOf(outcome.page.url()), load_ms: outcome.loadMs });
+      } else {
+        if (outcome.status) h.detail({ http_status: outcome.status });
+        h.result({ problem: outcome.failure.reasoning });
+        h.fail();
+      }
+      return outcome;
+    });
     if (!loaded.ok) {
       const loadEvidence = {
         ...evidence,
@@ -272,7 +294,23 @@ export async function withPage(
     return inconclusive(`The browser check could not complete: ${describeError(error).message}`, { ...evidence, ...proxyEvidence() }, error);
   } finally {
     clearTimeout(killer);
+    if (proxy.log.length > 0) {
+      const refused = proxy.log.filter((e) => e.outcome === "blocked").length;
+      note("guard", "Count the requests the guard proxy refused or could not complete", {
+        refused,
+        not_found: proxy.log.filter((e) => e.outcome === "not_found").length,
+        failed: proxy.log.filter((e) => e.outcome === "error").length,
+      });
+    }
     await browser?.close().catch(() => undefined);
     await proxy.close();
+  }
+}
+
+function hostOf(href: string): string | null {
+  try {
+    return new URL(href).host || null;
+  } catch {
+    return null;
   }
 }

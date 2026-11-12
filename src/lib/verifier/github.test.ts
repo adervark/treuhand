@@ -4,6 +4,10 @@
  * every request is recorded so tests can assert what was asked.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { websiteContractInput, withTempDb } from "@/test/helpers";
+import { createContract } from "@/lib/db/contracts";
+import { listStepsForSubmission } from "@/lib/db/steps";
+import { createSubmission } from "@/lib/db/submissions";
 import { checkContext } from "../../../test/fixtures/context";
 import { toVerdictFields } from "./index";
 import {
@@ -13,6 +17,9 @@ import {
   findIssueReference,
   parsePullRequestUrl,
 } from "./github";
+import { runWithTrace } from "./trace";
+
+withTempDb(); // for the work-log test
 
 const REPO = "acme/widgets";
 const PR_URL = `https://github.com/${REPO}/pull/7`;
@@ -514,4 +521,33 @@ describe("findIssueReference", () => {
       expect(findIssueReference(text, REPO, 12)).toBeNull();
     },
   );
+});
+
+describe("the work log", () => {
+  it("records the repository guard, each API request with its status and rate limit, and the tally", async () => {
+    const contract = createContract(websiteContractInput());
+    const submission = createSubmission({ contract_id: contract.id, url: PR_URL });
+    route(PR_PATH, { body: pullRequest(), headers: { "x-ratelimit-remaining": "59" } });
+    route(RUNS_PATH, runs(run("build", "completed", "success")));
+    route(STATUS_PATH, statuses());
+    route(SUITES_PATH, { body: { total_count: 0, check_suites: [] } });
+    const { value } = await runWithTrace(submission.id, "cond", () => checksPassed());
+    expect(value.passed).toBe(true);
+    const steps = listStepsForSubmission(submission.id);
+    expect(steps.map((s) => [s.kind, s.label, s.status])).toEqual([
+      ["guard", "Check the submission is a pull request in the contract's repository", "done"],
+      ["network", "Fetch the pull request from GitHub", "done"],
+      ["network", "Fetch the commit's check runs from GitHub", "done"],
+      ["network", "Fetch the commit's combined status from GitHub", "done"],
+      ["network", "Fetch the commit's check suites from GitHub", "done"],
+      ["measure", "Tally the checks on the head commit", "done"],
+    ]);
+    expect(steps[0]).toMatchObject({ detail: { contract_repo: REPO }, result: { pull_request_url: true, same_repo: true } });
+    expect(steps[1].detail).toEqual({ endpoint: "pull request", http_status: 200, attempts: 1, rate_limit_remaining: 59 });
+    expect(steps[2].detail).toEqual({ endpoint: "check runs", page: 1, http_status: 200, attempts: 1 });
+    expect(steps[5]).toMatchObject({
+      detail: { check_runs: 1, statuses: 0, waiting_suites: 0 },
+      result: { failed: 0, pending: 0, succeeded: 1 },
+    });
+  });
 });

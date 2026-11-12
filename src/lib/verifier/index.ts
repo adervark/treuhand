@@ -18,6 +18,7 @@
  */
 import { getContract } from "@/lib/db/contracts";
 import { listConditions } from "@/lib/db/conditions";
+import { deleteStepsForSubmission } from "@/lib/db/steps";
 import { getSubmission } from "@/lib/db/submissions";
 import { createVerdict, deleteVerdictsForSubmission } from "@/lib/db/verdicts";
 import {
@@ -33,7 +34,8 @@ import {
 } from "@/lib/types";
 import { checkAiPageJudgement } from "./ai-judgement";
 import { checkGithubChecksPassed, checkGithubPrMerged, checkGithubPrReferencesIssue } from "./github";
-import { CONFIDENCE_THRESHOLD, describeError, inconclusive } from "./result";
+import { clip, CONFIDENCE_THRESHOLD, describeError, inconclusive } from "./result";
+import { note, runWithTrace, toEvidenceTrace } from "./trace";
 import { checkDomAssert, checkFormSubmits, checkHttpOk, checkResponsive } from "./website";
 
 export { CONFIDENCE_THRESHOLD } from "./result";
@@ -154,19 +156,25 @@ async function runCheck(contract: Contract, condition: Condition, submission: Su
   const kind = condition.check_kind;
   const parsed = CheckParamsSchemas[kind].safeParse(condition.check_params);
   if (!parsed.success) {
+    note("guard", "Validate the check's parameters", { check_kind: kind }, { valid: false, problem: parsed.error.message });
     return inconclusive(`The condition's check parameters are invalid: ${parsed.error.message}`, { check_kind: kind });
   }
   const runner = checkRegistry[kind] as CheckRunner<CheckKind>;
   const ctx: CheckContext = { contract, condition, submission, params: parsed.data };
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
   const timeout = new Promise<CheckResult>((resolve) => {
-    timer = setTimeout(
-      () => resolve(inconclusive(`The check did not finish within ${CHECK_TIMEOUT_MS[kind] / 1000} s.`, {})),
-      CHECK_TIMEOUT_MS[kind],
-    );
+    timer = setTimeout(() => {
+      timedOut = true;
+      resolve(inconclusive(`The check did not finish within ${CHECK_TIMEOUT_MS[kind] / 1000} s.`, {}));
+    }, CHECK_TIMEOUT_MS[kind]);
   });
   try {
-    return await Promise.race([runner(ctx), timeout]);
+    const result = await Promise.race([runner(ctx), timeout]);
+    // Recorded here, not in the timer callback, so it lands in this check's work log (the runner's
+    // unfinished steps are then marked cut off when the trace scope closes).
+    if (timedOut) note("guard", "Stop the check at its time limit", { limit_s: CHECK_TIMEOUT_MS[kind] / 1000 }, { timed_out: true });
+    return result;
   } catch (error) {
     return inconclusive(`The check could not complete: ${describeError(error).message}`, {}, error);
   } finally {
@@ -180,7 +188,11 @@ async function runCheck(contract: Contract, condition: Condition, submission: Su
  * so the contract page shows the checks completing one by one. The run first
  * clears any earlier verdicts for the submission, so a finished run (first or
  * re-run) leaves exactly one verdict per condition; a run that crashes part
- * way leaves a partial set, which the next re-run replaces. The caller (the
+ * way leaves a partial set, which the next re-run replaces. Each check runs in
+ * a work-log scope (trace.ts): its steps are written as they happen, and the
+ * finished ones, with a closing "Record the verdict" step, are copied into the
+ * verdict's `evidence.trace`. The earlier run's steps are cleared with its
+ * verdicts. The caller (the
  * contract service) holds the contract's "verify" claim for the whole run, so no two
  * runs write the same submission at once, and it reports whether a run has
  * finished through its events, never through the verdict count. Does not
@@ -196,15 +208,26 @@ export async function verifySubmission(submissionId: string): Promise<Verificati
   if (conditions.length === 0) throw new Error(`verifySubmission: contract ${contract.id} has no conditions`);
 
   deleteVerdictsForSubmission(submission.id);
+  deleteStepsForSubmission(submission.id);
   const verdicts: Verdict[] = [];
   for (const condition of conditions) {
     const checkStarted = new Date();
-    const result = await runCheck(contract, condition, submission);
-    const fields = toVerdictFields(result);
+    // runCheck never throws, so the scope always hands back the check's steps.
+    const check = await runWithTrace(submission.id, condition.id, () => runCheck(contract, condition, submission));
+    const fields = toVerdictFields(check.value);
+    const decision = await runWithTrace(submission.id, condition.id, async () =>
+      note("decision", "Record the verdict", { check_kind: condition.check_kind }, {
+        outcome: fields.evidence.outcome ?? null,
+        confidence: fields.confidence,
+        ...(check.value.inconclusive ? { reason: clip(fields.reasoning, 160) } : {}),
+      }),
+    );
     fields.evidence = {
       ...fields.evidence,
       check_kind: condition.check_kind,
       timings: { started_at: checkStarted.toISOString(), duration_ms: Date.now() - checkStarted.getTime() },
+      // The check's work log, so the run's signed receipt (which hashes the evidence) covers it.
+      trace: toEvidenceTrace([...check.steps, ...decision.steps]),
     };
     verdicts.push(createVerdict({ submission_id: submission.id, condition_id: condition.id, ...fields }));
   }

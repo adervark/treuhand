@@ -14,11 +14,13 @@ import { IconCheck, IconCircle, IconExternal, IconQuestion, IconScan, IconX } fr
 import { RelativeTime } from "../time";
 import { cx, Tag } from "../ui";
 import type { Submission } from "@/lib/types";
-import type { SignedReceipt } from "@/lib/contract/service";
+import type { SignedReceipt, TraceStep } from "@/lib/contract/service";
 import { Evidence, evidenceScreenshots, ManipulationNotice, manipulationOf, Screenshot } from "./evidence";
 import { CopyHash, evidenceHashes } from "./receipt-panel";
 import { CheckedByCode, readPanel, ReviewPanel } from "./review-panel";
 import type { ConditionRow, Outcome } from "./verdicts";
+import { logPhase, redactSteps, type SubmissionSteps } from "./work-log";
+import { CheckWorkLog, RunRecord, type WorkLogEnv } from "./work-log-view";
 
 const OUTCOME_META: Record<Outcome, { label: string; tone: Tone; variant: "fill" | "outline"; row: string }> = {
   pass: { label: "Pass", tone: "paid", variant: "fill", row: "" },
@@ -70,8 +72,20 @@ function Confidence({ value }: { value: number }) {
   );
 }
 
-export function Checklist({ rows, submission, receipt = null }: { rows: ConditionRow[]; submission: Submission | null; receipt?: SignedReceipt | null }) {
+export function Checklist({
+  rows,
+  submission,
+  receipt = null,
+  workLog = null,
+}: {
+  rows: ConditionRow[];
+  submission: Submission | null;
+  receipt?: SignedReceipt | null;
+  /** The chosen attempt's steps (work-log.ts) and what every work log reads; null when it has none. */
+  workLog?: { steps: SubmissionSteps; env: WorkLogEnv } | null;
+}) {
   const hashes = useMemo(() => evidenceHashes(receipt), [receipt]);
+  const allDecided = rows.every((r) => logPhase(r) === "decided");
   return (
     <div>
       {submission ? (
@@ -99,15 +113,36 @@ export function Checklist({ rows, submission, receipt = null }: { rows: Conditio
             row={row}
             index={i}
             evidenceHash={row.verdict ? (hashes.get(row.verdict.id) ?? null) : null}
+            workLog={workLog ? { steps: workLog.steps.byCondition.get(row.condition.id) ?? [], env: workLog.env } : null}
           />
         ))}
       </ol>
+      {workLog ? (
+        <RunRecord
+          steps={redactSteps(workLog.steps.run, allDecided ? "decided" : "running")}
+          env={workLog.env}
+          phase={allDecided ? "decided" : "running"}
+        />
+      ) : null}
     </div>
   );
 }
 
-function ChecklistRow({ row, index, evidenceHash }: { row: ConditionRow; index: number; evidenceHash: string | null }) {
+function ChecklistRow({
+  row,
+  index,
+  evidenceHash,
+  workLog,
+}: {
+  row: ConditionRow;
+  index: number;
+  evidenceHash: string | null;
+  workLog: { steps: TraceStep[]; env: WorkLogEnv } | null;
+}) {
   const { condition, outcome } = row;
+  // Nothing announces a result before the row does (work-log.ts): a queued row shows no steps, a checking one no results.
+  const phase = logPhase(row);
+  const steps = workLog ? redactSteps(workLog.steps, phase) : [];
   // While a just-arrived verdict is played in (its reviewers voting), the row shows its evidence and panel but not its result yet.
   const voting = row.voting !== undefined;
   const verdict = voting ? null : row.verdict;
@@ -206,6 +241,14 @@ function ChecklistRow({ row, index, evidenceHash }: { row: ConditionRow; index: 
               <p className="text-[0.72rem] text-ink-3">How it was checked: {describeCheck(condition)}</p>
             </div>
           </details>
+
+          {workLog && phase === "decided" ? <CheckWorkLog steps={steps} phase={phase} env={workLog.env} /> : null}
+        </div>
+      ) : null}
+
+      {workLog && steps.length > 0 && (phase === "running" || (phase === "decided" && !verdict)) ? (
+        <div className="col-span-2 col-start-1 row-start-5 min-w-0 sm:col-span-2 sm:col-start-3 sm:row-start-3">
+          <CheckWorkLog steps={steps} phase={phase} env={workLog.env} />
         </div>
       ) : null}
     </li>

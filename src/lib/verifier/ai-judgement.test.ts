@@ -10,6 +10,10 @@ import os from "node:os";
 import path from "node:path";
 import type { ChatCompletionContentPart, ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { websiteContractInput, withTempDb } from "@/test/helpers";
+import { createContract } from "@/lib/db/contracts";
+import { listStepsForSubmission } from "@/lib/db/steps";
+import { createSubmission } from "@/lib/db/submissions";
 import { checkContext } from "../../../test/fixtures/context";
 import { startFixtureServer, type FixtureServer } from "../../../test/fixtures/server";
 import {
@@ -27,6 +31,7 @@ import {
 import { setEvidenceRootForTests } from "./evidence";
 import { toVerdictFields } from "./index";
 import { unsafeAllowPrivateNetworkForTests } from "./net-guard";
+import { runWithTrace } from "./trace";
 
 const { create } = vi.hoisted(() => ({ create: vi.fn() }));
 vi.mock("@/lib/ai/client", () => ({
@@ -34,6 +39,8 @@ vi.mock("@/lib/ai/client", () => ({
 }));
 
 vi.setConfig({ testTimeout: 60_000 });
+
+withTempDb(); // for the work-log test
 
 const PRICING = "The page shows at least three distinct subscription plans, and each plan shows its price.";
 
@@ -413,6 +420,42 @@ describe("checkAiPageJudgement with the judge panel (default)", () => {
     expect(result.reasoning).toContain(
       "the reviewer hunting for manipulation and missing evidence could not answer (503 Service Unavailable)",
     );
+  });
+
+  it("records a work log: page reading, screenshots, the scan, one concurrent step per reviewer, and the panel's decision", async () => {
+    const contract = createContract(websiteContractInput());
+    const submission = createSubmission({ contract_id: contract.id, url: `${server.url}/good.html` });
+    reviewersAnswer({
+      literal: verdict({ criterion_met: false, confidence: 0.95 }),
+      worker_side: verdict(),
+      skeptic: Object.assign(new Error("503 Service Unavailable"), { name: "InternalServerError" }),
+    });
+    await runWithTrace(submission.id, "cond", () => judge("good.html"));
+    const steps = listStepsForSubmission(submission.id);
+    expect(steps.map((s) => [s.kind, s.label, s.status])).toEqual([
+      ["guard", "Check the address is a public website", "done"],
+      ["browser", "Start an isolated browser behind the guard proxy", "done"],
+      ["browser", "Load the page", "done"],
+      ["measure", "Read the page's visible text", "done"],
+      ["screenshot", "Capture the page for the record and the reviewers", "done"],
+      ["guard", "Scan the page for text aimed at the verifier", "done"],
+      ["model", "Ask the strict literal reader", "done"],
+      ["model", "Ask the reader on the worker's side", "done"],
+      ["model", "Ask the reviewer hunting for manipulation and missing evidence", "failed"],
+      ["decision", "Combine the reviewers' votes", "done"],
+    ]);
+    const [literal, workerSide, skeptic] = steps.filter((s) => s.kind === "model");
+    // Votes are in `result` only; `detail` holds neutral facts.
+    expect(literal).toMatchObject({
+      detail: { reviewer: "literal", seat: 1, model: "test-model", attempts: 1 },
+      result: { vote: "fail", criterion_met: false, confidence: 0.95, manipulation_reported: false },
+    });
+    expect(workerSide.result).toMatchObject({ vote: "pass", criterion_met: true });
+    expect(skeptic).toMatchObject({ detail: { reviewer: "skeptic", seat: 3 }, result: { error: "503 Service Unavailable" } });
+    expect(steps.at(-1)).toMatchObject({ detail: { reviewers: 3 }, result: { decision: "inconclusive", agreement: 0.33 } });
+    expect(steps[3].detail).toMatchObject({ visible_chars: expect.any(Number), hidden_text: expect.any(Number) });
+    expect(steps[4].detail).toMatchObject({ viewport_width: 1280, tiles: expect.any(Number), bytes: expect.any(Number) });
+    expect(steps[5].detail).toEqual({ signals: expect.any(Number) });
   });
 
   it("a reviewer that gives no valid reply in three attempts counts as an error", async () => {

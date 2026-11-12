@@ -35,6 +35,7 @@ import { DESKTOP_VIEWPORT, evaluateIsolated, targetUrl, withPage } from "./brows
 import { saveScreenshot } from "./evidence";
 import { VISIBLE_TEXT_JS } from "./visible-text";
 import { clip, CONFIDENCE_THRESHOLD, describeError, fail, inconclusive, pass } from "./result";
+import { note as traceNote, step } from "./trace";
 
 const MAX_PAGE_TEXT = 8_000;
 const MAX_TILES = 4;
@@ -378,33 +379,55 @@ export async function checkAiPageJudgement(ctx: CheckContext<"ai_page_judgement"
   const url = targetUrl(ctx.submission.url, ctx.params.path);
   return withPage(url, { deadlineMs: 60_000 }, { criterion }, async ({ page, evidence, finalUrl, status }) => {
     const shotStarted = Date.now();
-    const reading = await evaluateIsolated<PageReading>(page, READ_PAGE_SCRIPT);
-    const height = Math.max(1, Math.min(reading.height, TILE_HEIGHT * MAX_TILES));
-    const full = await page.screenshot({
-      type: "jpeg",
-      quality: 70,
-      fullPage: true,
-      clip: { x: 0, y: 0, width: DESKTOP_VIEWPORT.width, height },
-      timeout: 15_000,
+    const reading = await step("measure", "Read the page's visible text", async (h) => {
+      const read = await evaluateIsolated<PageReading>(page, READ_PAGE_SCRIPT);
+      h.detail({
+        visible_chars: read.visible.length,
+        hidden_text: read.hidden.length,
+        comments: read.comments.length,
+        attributes: read.attributes.length,
+        page_height_px: read.height,
+      });
+      return read;
     });
-    const tiles: Buffer[] = [];
-    for (let y = 0; y < height && tiles.length < MAX_TILES; y += TILE_HEIGHT) {
-      tiles.push(
-        await page.screenshot({
+    const height = Math.max(1, Math.min(reading.height, TILE_HEIGHT * MAX_TILES));
+    const { tiles, screenshots } = await step(
+      "screenshot",
+      "Capture the page for the record and the reviewers",
+      async (h) => {
+        const full = await page.screenshot({
           type: "jpeg",
-          quality: 75,
+          quality: 70,
           fullPage: true,
-          clip: { x: 0, y, width: DESKTOP_VIEWPORT.width, height: Math.min(TILE_HEIGHT, height - y) },
+          clip: { x: 0, y: 0, width: DESKTOP_VIEWPORT.width, height },
           timeout: 15_000,
-        }),
-      );
-    }
-    const screenshots = [await saveScreenshot(ctx, "page", full)];
+        });
+        const shots: Buffer[] = [];
+        for (let y = 0; y < height && shots.length < MAX_TILES; y += TILE_HEIGHT) {
+          shots.push(
+            await page.screenshot({
+              type: "jpeg",
+              quality: 75,
+              fullPage: true,
+              clip: { x: 0, y, width: DESKTOP_VIEWPORT.width, height: Math.min(TILE_HEIGHT, height - y) },
+              timeout: 15_000,
+            }),
+          );
+        }
+        h.detail({ bytes: full.length, tiles: shots.length, tile_bytes: shots.reduce((sum, t) => sum + t.length, 0), height_px: height });
+        return { tiles: shots, screenshots: [await saveScreenshot(ctx, "page", full)] };
+      },
+      { viewport_width: DESKTOP_VIEWPORT.width },
+    );
     const screenshotMs = Date.now() - shotStarted;
 
     const text = reading.visible.replace(/\n{3,}/g, "\n\n").trim();
     const truncated = text.length > MAX_PAGE_TEXT;
-    const signals = scanForManipulation(reading);
+    const signals = await step("guard", "Scan the page for text aimed at the verifier", (h) => {
+      const found = scanForManipulation(reading);
+      h.detail({ signals: found.length });
+      return found;
+    });
     const pageEvidence = {
       ...evidence,
       screenshots,
@@ -431,7 +454,7 @@ export async function checkAiPageJudgement(ctx: CheckContext<"ai_page_judgement"
     });
 
     const modelStarted = Date.now();
-    const answers = await Promise.allSettled(reviewers.map((reviewer) => askModel(content, reviewer.prompt)));
+    const answers = await Promise.allSettled(reviewers.map((reviewer, seat) => askReviewer(reviewer, seat, content)));
     const shared: Shared = {
       pageEvidence,
       signals,
@@ -442,6 +465,32 @@ export async function checkAiPageJudgement(ctx: CheckContext<"ai_page_judgement"
 }
 
 type Answer = Awaited<ReturnType<typeof askModel>>;
+
+/** One reviewer's model call, as a work-log step; reviewers run concurrently, so their steps overlap. */
+function askReviewer(reviewer: Reviewer, seat: number, content: ChatCompletionContentPart[]): Promise<Answer> {
+  return step(
+    "model",
+    `Ask ${reviewer.title}`,
+    async (h) => {
+      try {
+        const answer = await askModel(content, reviewer.prompt);
+        const { criterion_met, confidence, manipulation_attempt } = answer.judgement;
+        h.detail({ model: answer.model, attempts: answer.attempts });
+        h.result({
+          vote: confidence >= CONFIDENCE_THRESHOLD ? (criterion_met ? "pass" : "fail") : "unsure",
+          criterion_met,
+          confidence,
+          manipulation_reported: manipulation_attempt,
+        });
+        return answer;
+      } catch (error) {
+        if (error instanceof ModelOutputError) h.detail({ attempts: error.problems.length });
+        throw error;
+      }
+    },
+    { reviewer: reviewer.id, seat: seat + 1 },
+  );
+}
 
 /** What every outcome's evidence carries from reading the page. */
 interface Shared {
@@ -544,6 +593,7 @@ function panelJudgement(reviewers: Reviewer[], answers: PromiseSettledResult<Ans
   const { pageEvidence, signals, timings } = shared;
   const votes = reviewers.map((reviewer, i) => toVote(reviewer, answers[i]));
   const { decision, agreement } = decidePanel(votes.map((v) => v.vote));
+  traceNote("decision", "Combine the reviewers' votes", { reviewers: votes.length }, { decision, agreement });
   const fulfilled = answers.flatMap((a) => (a.status === "fulfilled" ? [a.value] : []));
   const reported = votes.some((v) => v.manipulation_reported);
   const met = votes.filter((v) => v.criterion_met === true).length;

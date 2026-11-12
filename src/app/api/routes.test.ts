@@ -170,7 +170,7 @@ describe("POST /api/contracts and GET", () => {
       dispute: null,
     });
     expect(Object.keys(detail.body).sort()).toEqual(
-      ["activity", "allowed_actions", "conditions", "contract", "dispute", "events", "ledger", "notes", "payout", "receipt", "submissions", "terms_sha256", "verdicts", "verification", "viewer"],
+      ["activity", "allowed_actions", "conditions", "contract", "dispute", "events", "ledger", "notes", "payout", "receipt", "submissions", "terms_sha256", "trace", "verdicts", "verification", "viewer"],
     );
   });
 
@@ -332,9 +332,28 @@ describe("submitting and verifying", () => {
     });
     await expectError(submitRoute.POST(req({ url: "https://site.test/" }), params(contract.id)), 409, "BUSY");
 
+    expect(during.body.trace).toEqual({ now: expect.any(String), steps: [] });
+
     await scheduled[0]();
     const done = await call(detailRoute.GET(req(), params(contract.id)));
     expect(done.body).toMatchObject({ contract: { state: "PAID" }, verification: { status: "passed" } });
+    // The verifier is mocked here, so the work log holds only the run-level receipt step.
+    expect(Date.parse((done.body.trace as { now: string }).now)).not.toBeNaN();
+    expect((done.body.trace as { steps: unknown[] }).steps).toEqual([
+      {
+        id: expect.any(String),
+        submission_id: submitted.body.submissionId,
+        condition_id: null,
+        seq: 1,
+        kind: "record",
+        label: "Sign the verification receipt",
+        status: "done",
+        started_at: expect.any(String),
+        duration_ms: expect.any(Number),
+        detail: { algorithm: "Ed25519", verdicts: CONDITIONS.website_milestone.length, issued: true, receipt_sha256: expect.stringMatching(/^[0-9a-f]{12}$/) },
+        result: {},
+      },
+    ]);
   });
 
   it("re-runs only an unfinished verification", async () => {
